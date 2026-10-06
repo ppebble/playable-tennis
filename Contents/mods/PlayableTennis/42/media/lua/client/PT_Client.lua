@@ -2,6 +2,7 @@
 require "ISUI/ISPanel"
 require "ISUI/ISContextMenu"
 require "PT_Core"
+require "PT_Wall"
 
 PTClient = { courts = {}, seq = 0, revision = -1, retired = {}, lastSync = 0 }
 local C = PTClient
@@ -11,24 +12,34 @@ local function notice(message)
     C.messageUntil = now() + 7000
 end
 local function player() return getSpecificPlayer(0) end
+local function holdsSports(p)
+    local item=p and p:getPrimaryHandItem()
+    return item and item:getFullType()=="PlayableTennis.SportsTennisRacket"
+end
+local function equippedToStart(p)
+    if not p or p:isDead() or p:getVehicle() or not holdsSports(p) then return false end
+    local ball=p:getSecondaryHandItem()
+    return p:getPrimaryHandItem():getCondition()>0 and ball and ball:getFullType()=="Base.TennisBall"
+end
 local function mouseEligible(p)
-    if not p or not C.session or not C.core or C.core.phase=="finished" then return false end
+    if not p or not C.session or not C.core or C.waiting or C.core.phase=="finished" then return false end
     if p:isDead() or p:getVehicle() then return false end
     local c=C.core.court
-    if p:getZ()~=c.z or p:getX()<c.x1-2 or p:getX()>c.x2+2 or p:getY()<c.y1-2 or p:getY()>c.y2+2 then return false end
+    if p:getZ()~=c.z or not PTWall.contains(c,p:getX(),p:getY(),2) then return false end
     local item=p:getPrimaryHandItem()
-    return item and item:getFullType()=="Base.TennisRacket" and item:getCondition()>0
+    return holdsSports(p) and item:getCondition()>0
 end
 local function releaseGuard(force)
     local guard=C.attackGuard
-    if guard and (force or (not isMouseButtonDown(0) and not isMouseButtonDown(1))) then
+    if guard and (force or (not holdsSports(guard.player) and not isMouseButtonDown(0) and not isMouseButtonDown(1))) then
         guard.player:setBannedAttacking(guard.previous)
         C.attackGuard=nil
     end
 end
 local function updateGuard(p)
     if C.attackGuard and C.attackGuard.player~=p then releaseGuard(true) end
-    if mouseEligible(p) and isMouseButtonDown(1) then
+    -- A sports racket never enables combat, even outside a court or while waiting.
+    if p and not p:isDead() and holdsSports(p) then
         if not C.attackGuard then C.attackGuard={player=p,previous=p:isBannedAttacking()} end
         p:setBannedAttacking(true)
     elseif C.attackGuard then
@@ -67,6 +78,13 @@ local function join(id)
     send("join", { id = id })
 end
 local function removeCourt(id) send("remove", { id = id }) end
+local function startWallAt(args)
+    if C.session then notice("Leave your current match/practice first."); return end
+    if not equippedToStart(player()) then notice("Hold a sports racket in your primary hand and Tennis Ball in your secondary hand."); return end
+    if now()<(C.wallPendingUntil or 0) then return end
+    C.wallPendingUntil=now()+500
+    send("startWall",args)
+end
 function C.receive(command, args)
     args = args or {}
     if command == "list" then
@@ -119,9 +137,12 @@ end
 local function mouseAim()
     local c=C.core.court
     local x=screenToIsoX(0,getMouseX(),getMouseY(),c.z)
+    local y=screenToIsoY(0,getMouseX(),getMouseY(),c.z)
+    x=PTWall.toLocal(c,x,y)
     local width=c.x2-c.x1
     local base,scale=(c.x1+c.x2)/2,width*0.3
-    if C.core.phase=="ready" then
+    if c.freeWall then base=(c.wallMinX+c.wallMaxX)/2; scale=(c.wallMaxX-c.wallMinX)*0.35
+    elseif C.core.phase=="ready" then
         if c.mode=="wall" then scale=width*0.18
         else
             local even=(C.core.points[1]+C.core.points[2])%2==0
@@ -133,7 +154,8 @@ local function mouseAim()
     return math.max(-1,math.min(1,(x-base)/scale))
 end
 local function input(command,selectedAim)
-    if not C.session or inputBlocked() then return end
+    if not mouseEligible(player()) or inputBlocked() then return end
+    if command=="serve" and not equippedToStart(player()) then notice("Hold the Tennis Ball in your secondary hand to serve."); return end
     if now() - (C.receivedAt or 0) > 3000 then
         notice("Waiting for server state; syncing...")
         if now() - C.lastSync > 2000 then sync() end
@@ -147,7 +169,14 @@ local function mouseDown()
     local p=player()
     -- This event is emitted only for a world click unconsumed by other UI.
     -- Its return value does not cancel combat: OnPlayerUpdate applies the gate.
-    if not mouseEligible(p) or not isMouseButtonDown(1) or inputBlocked() or C.textWasFocused then return end
+    if not isMouseButtonDown(1) or inputBlocked() or C.textWasFocused then return end
+    if not C.session then
+        if equippedToStart(p) then
+            startWallAt({x=screenToIsoX(0,getMouseX(),getMouseY(),p:getZ()),y=screenToIsoY(0,getMouseX(),getMouseY(),p:getZ())})
+        end
+        return
+    end
+    if not mouseEligible(p) then return end
     updateGuard(p)
     input(C.core.phase=="ready" and "serve" or "swing",mouseAim())
 end
@@ -187,14 +216,17 @@ local function contextMenu(playerIndex, context, objects, test)
     menu:addOption("Mark corner 2 (" .. locationLabel .. ")", square, mark, 2)
     if C.draft and C.draft[1] and C.draft[2] then
         menu:addOption("Register 1v1 court", "tennis", register)
-        menu:addOption("Register wall court (wall on north edge)", "wall", register)
     end
     menu:addOption("Refresh court list / synchronize", nil, sync)
+    if not C.session then
+        menu:addOption("Start wall practice here (sports racket + ball in hands)",
+            {x=square:getX()+0.5,y=square:getY()+0.5},startWallAt)
+    end
     local count = 0
     for _, court in pairs(C.courts) do
         if court.id and court.x1 and court.y1 and court.z == math.floor(p:getZ())
             and math.abs(p:getX() - court.x1) < 100 and math.abs(p:getY() - court.y1) < 100 then
-            menu:addOption("Join " .. tostring(court.id) .. " (" .. tostring(court.mode) .. ")", court.id, join)
+            if court.mode=="tennis" then menu:addOption("Join " .. tostring(court.id) .. " (" .. tostring(court.mode) .. ")", court.id, join) end
             menu:addOption("Remove " .. tostring(court.id) .. " (owner/admin, idle)", court.id, removeCourt)
             count = count + 1
             if count >= 20 then break end
@@ -218,6 +250,7 @@ local function score(core)
     return labels[math.min(a,3)+1] .. " : " .. labels[math.min(b,3)+1]
 end
 local function project(x, y, z)
+    if C.core and C.core.court.frame then x,y=PTWall.toWorld(C.core.court,x,y) end
     return isoToScreenX(0, x, y, z), isoToScreenY(0, x, y, z)
 end
 function Overlay:worldLine(x1,y1,x2,y2,z,r,g,b)
@@ -232,17 +265,17 @@ function Overlay:render()
         local x1,y1,x2,y2,z = court.x1,court.y1,court.x2,court.y2,court.z
         if math.floor(player():getZ()) == z then
             local mx,my = (x1+x2)/2,(y1+y2)/2
-            self:worldLine(x1,y1,x2,y1,z,1,1,1)
-            self:worldLine(x2,y1,x2,y2,z,1,1,1)
-            self:worldLine(x2,y2,x1,y2,z,1,1,1)
-            self:worldLine(x1,y2,x1,y1,z,1,1,1)
             if court.mode == "tennis" then
+                self:worldLine(x1,y1,x2,y1,z,1,1,1)
+                self:worldLine(x2,y1,x2,y2,z,1,1,1)
+                self:worldLine(x2,y2,x1,y2,z,1,1,1)
+                self:worldLine(x1,y2,x1,y1,z,1,1,1)
                 self:worldLine(x1,my,x2,my,z,0.3,0.8,1)
                 self:worldLine(x1,(y1+my)/2,x2,(y1+my)/2,z,1,1,1)
                 self:worldLine(x1,(y2+my)/2,x2,(y2+my)/2,z,1,1,1)
                 self:worldLine(mx,(y1+my)/2,mx,(y2+my)/2,z,1,1,1)
             else
-                self:worldLine(x1,y1,x2,y1,z+0.4,0.3,0.8,1)
+                self:worldLine(court.wallMinX or x1,y1,court.wallMaxX or x2,y1,z+0.4,0.3,0.8,1)
             end
             if mouseEligible(player()) and isMouseButtonDown(1) and not inputBlocked() then
                 local tx,ty=PTCore.aimTarget(core,C.slot,mouseAim(),core.phase=="ready")
@@ -283,13 +316,18 @@ function Overlay:render()
         local even = (core.points[1] + core.points[2]) % 2 == 0
         local left = (core.server == 1 and even) or (core.server == 2 and not even)
         local side = left and "west (lower X)" or "east (higher X)"
-        line(court.mode == "wall" and "Serve near south baseline; return after wall rebound."
+        line(court.mode == "wall" and "Ball in secondary hand to restart; return wall rebound."
             or "Serve near baseline, " .. side .. " half.",4)
-        line(tostring(C.waiting and "Waiting for opponent" or core.message or ""),5,0.7,0.9,1)
+        line(tostring(C.waiting and "Waiting for opponent - tennis input disabled" or core.message or ""),5,0.7,0.9,1)
         line("Right-click > Playable Tennis: courts / leave / sync",6)
         if now() < (C.flashUntil or 0) then
             self:drawRect(x+470,y+10,10,10,1,1,0.8,0.2)
         end
+    end
+    if not core and holdsSports(player()) then
+        self:drawRect(24,160,550,54,0.83,0.04,0.06,0.07)
+        self:drawText("Sports racket: combat disabled. Aim at a wall + RMB/LMB to start.",34,168,1,1,1,1,UIFont.Small)
+        self:drawText("Start requires Tennis Ball in secondary hand. Join a court for 1v1.",34,189,0.7,0.9,1,1,UIFont.Small)
     end
     if now() < (C.messageUntil or 0) then
         self:drawRect(24,335,640,30,0.85,0.05,0.05,0.05)

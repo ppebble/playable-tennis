@@ -64,70 +64,106 @@ check(ClientMock.sound=='TennisRacketHit','accepted new shot emits local feedbac
 local bounce=snapshot(4,'rally',6,'b'); bounce.core.shotId=2; bounce.core.bounces=1
 PTClient.receive('state',bounce)
 check(PTClient.previousBall==nil,'bounce discontinuity discards interpolation')
--- Native UI emits OnMouseDown only for an unconsumed world left press.
+
 local p=ClientMock.player
-ClientMock.buttons={[0]=true,[1]=true}
-ClientMock.mouseX=5
-Events.OnPlayerUpdate.callback(p)
-check(p.banned and PTClient.attackGuard,'native attack disabled before input for tennis aiming')
+local function click() Events.OnMouseDown.callback() end
+local function update() Events.OnPlayerUpdate.callback(p) end
+local function last() return ClientMock.sent[#ClientMock.sent] end
+ClientMock.buttons={[0]=true,[1]=true}; ClientMock.mouseX=5
+update()
+check(p.banned and PTClient.attackGuard,'sports racket suppresses native combat')
 local before=#ClientMock.sent
-Events.OnMouseDown.callback()
-local stroke=ClientMock.sent[#ClientMock.sent]
-check(#ClientMock.sent==before+1 and stroke.command=='swing','RMB plus world LMB sends a rally swing')
-check(math.abs(stroke.args.aim-1/2.4)<0.000001,'world cursor maps to continuous lateral aim')
-Events.OnPlayerUpdate.callback(p); Events.OnPlayerUpdate.callback(p)
-check(#ClientMock.sent==before+1,'holding buttons or UI-consumed click does not auto-fire')
-ClientMock.buttons[1]=false
-Events.OnMouseDown.callback()
-check(#ClientMock.sent==before+1,'left without right does not send a tennis stroke')
-Events.OnPlayerUpdate.callback(p)
-check(p.banned,'held left is drained after right release to prevent delayed combat')
-ClientMock.buttons[0]=false
-Events.OnPlayerUpdate.callback(p)
-check(not p.banned and not PTClient.attackGuard,'normal combat restored after both buttons released')
-local ready=snapshot(5,'ready',nil,'b'); ready.core.shotId=2
+click()
+check(#ClientMock.sent==before+1 and last().command=='swing','world RMB LMB sends rally swing')
+check(math.abs(last().args.aim-1/2.4)<0.000001,'world mouse maps to continuous aim')
+update(); update()
+check(#ClientMock.sent==before+1,'holding buttons does not auto fire')
+ClientMock.buttons={}; update()
+check(p.banned and PTClient.attackGuard,'sports racket stays noncombat without RMB')
+local waiting=snapshot(5,'ready',nil,'b'); waiting.waiting=true
+PTClient.receive('state',waiting)
+ClientMock.buttons={[0]=true,[1]=true}; before=#ClientMock.sent
+Events.OnKeyPressed.callback(Keyboard.KEY_J); Events.OnKeyPressed.callback(Keyboard.KEY_K); click(); update()
+check(#ClientMock.sent==before,'waiting tennis rejects all mouse and key strokes')
+check(p.banned,'waiting does not release sports combat guard')
+local ready=snapshot(6,'ready',nil,'b'); ready.waiting=false
 PTClient.receive('state',ready)
-ClientMock.buttons={[0]=true,[1]=true}; ClientMock.mouseX=6.4
-Events.OnMouseDown.callback()
-stroke=ClientMock.sent[#ClientMock.sent]
-check(stroke.command=='serve' and math.abs(stroke.args.aim-0.5)<0.000001,'ready left click serves into mouse-selected service target')
-ClientMock.mouseX=999
-Events.OnMouseDown.callback()
-check(ClientMock.sent[#ClientMock.sent].args.aim==1,'cursor outside court clamps target on server-compatible range')
-before=#ClientMock.sent; ClientMock.focused=true
-Events.OnMouseDown.callback()
-check(#ClientMock.sent==before,'focused text suppresses mouse stroke')
-Events.OnTick.callback(); ClientMock.focused=false
-Events.OnMouseDown.callback()
-check(#ClientMock.sent==before,'click that unfocuses text cannot also swing')
-Events.OnTick.callback()
-ClientMock.time=ClientMock.time+4000; before=#ClientMock.sent
-Events.OnMouseDown.callback()
-check(#ClientMock.sent==before+1 and ClientMock.sent[#ClientMock.sent].command=='sync','stale mouse input only requests sync')
-PTClient.receive('left',{session='b'})
-check(p.banned,'leave with held buttons waits for release')
-ClientMock.buttons={}; Events.OnPlayerUpdate.callback(p)
-check(not p.banned,'leave restores old combat state after release')
-before=#ClientMock.sent; ClientMock.buttons={[0]=true,[1]=true}
-Events.OnMouseDown.callback(); Events.OnPlayerUpdate.callback(p)
-check(#ClientMock.sent==before and not p.banned,'outside a session mouse and combat remain untouched')
-p.banned=true
-PTClient.receive('state',snapshot(1,'ready',nil,'c'))
-Events.OnPlayerUpdate.callback(p); ClientMock.buttons={}; Events.OnPlayerUpdate.callback(p)
-check(p.banned and not PTClient.attackGuard,'preexisting attack ban is restored instead of cleared')
-p.banned=false; p.noRacket=true; ClientMock.buttons={[0]=true,[1]=true}; before=#ClientMock.sent
-Events.OnPlayerUpdate.callback(p); Events.OnMouseDown.callback()
-check(not p.banned and #ClientMock.sent==before,'unequipped racket does not claim mouse or combat')
-p.noRacket=false; Events.OnPlayerUpdate.callback(p)
-check(p.banned,'equipped racket reacquires native attack gate')
+p.noBall=true; p.inventoryBall=true; before=#ClientMock.sent
+click(); Events.OnKeyPressed.callback(Keyboard.KEY_K)
+check(#ClientMock.sent==before,'loose inventory ball cannot serve without secondary ball')
+p.noBall=false; p.secondaryType='Base.Baseball'; click()
+check(#ClientMock.sent==before,'wrong secondary item cannot serve')
+p.secondaryType=nil; ClientMock.mouseX=6.4; click()
+check(last().command=='serve' and math.abs(last().args.aim-0.5)<0.000001,'secondary tennis ball enables aimed serve')
+ClientMock.mouseX=999; click()
+check(last().args.aim==1,'mouse aim clamps to supported range')
+before=#ClientMock.sent; ClientMock.focused=true; click()
+check(#ClientMock.sent==before,'focused text suppresses mouse input')
+Events.OnTick.callback(); ClientMock.focused=false; click()
+check(#ClientMock.sent==before,'unfocus click cannot also swing')
+Events.OnTick.callback(); ClientMock.time=ClientMock.time+4000; before=#ClientMock.sent; click()
+check(#ClientMock.sent==before+1 and last().command=='sync','stale mouse only syncs')
+PTClient.receive('left',{session='b'}); ClientMock.buttons={}; update()
+check(p.banned and not PTClient.session,'sports guard persists outside session')
+p.primaryType='Base.TennisRacket'; update(); before=#ClientMock.sent
+ClientMock.buttons={[0]=true,[1]=true}; click(); update()
+check(not p.banned and #ClientMock.sent==before,'vanilla racket preserves combat and never starts practice')
+PTClient.receive('state',snapshot(1,'ready',nil,'vanilla')); before=#ClientMock.sent
+click(); Events.OnKeyPressed.callback(Keyboard.KEY_J); Events.OnKeyPressed.callback(Keyboard.KEY_K)
+check(#ClientMock.sent==before and not p.banned,'vanilla racket never sports even in session')
+PTClient.receive('left',{session='vanilla'}); p.primaryType=nil; p.noBall=true; update(); before=#ClientMock.sent
+click()
+check(p.banned and #ClientMock.sent==before,'sports without session blocks combat but needs held ball to start')
+p.noBall=false; ClientMock.mouseX=17.25; ClientMock.mouseY=9.75; click()
+check(last().command=='startWall' and last().args.x==17.25 and last().args.y==9.75,'no-session click sends world wall target')
+before=#ClientMock.sent; click()
+check(#ClientMock.sent==before,'wall start duplicate cooldown')
+ClientMock.time=ClientMock.time+501; click()
+check(#ClientMock.sent==before+1,'wall start retry permitted after cooldown')
+ClientMock.buttons={}; update(); p.primaryType='Base.Axe'; update()
+check(not p.banned and not PTClient.attackGuard,'unequipping restores previous native attack baseline')
+p.banned=true; p.primaryType=nil; update(); p.primaryType='Base.Axe'; update()
+check(p.banned and not PTClient.attackGuard,'preexisting native ban survives equip unequip')
+p.banned=false; p.primaryType=nil; update(); ClientMock.buttons={[0]=true}; p.primaryType='Base.Axe'; update()
+check(p.banned,'held tennis click drains before weapon combat resumes')
+ClientMock.buttons={}; update()
+check(not p.banned,'release clears guard after switching weapon')
+p.primaryType=nil; update()
+check(p.banned,'reequipping reacquires clean baseline')
+-- Context fallback targets the selected tile centre, not the player's position.
+ClientMock.time=ClientMock.time+501
+local menu2=ClientMock.menu(); Events.OnFillWorldObjectContextMenu.callback(0,menu2,{{getSquare=function() return square end}},false)
+local wallOption
+for _,o in ipairs(menu2.submenu.options) do if string.find(o.name,'Start wall practice',1,true) then wallOption=o end end
+check(wallOption~=nil,'wall practice context fallback exists')
+wallOption.callback(wallOption.target)
+check(last().command=='startWall' and last().args.x==1.5 and last().args.y==2.5,'context fallback sends selected tile centre')
+-- All four cardinal frames use wall-local aiming and transform rendered balls.
+local frames={{ux=1,uy=0,vx=0,vy=1},{ux=-1,uy=0,vx=0,vy=-1},
+    {ux=0,uy=1,vx=1,vy=0},{ux=0,uy=-1,vx=-1,vy=0}}
+for i,f in ipairs(frames) do
+    f.originX=30; f.originY=40
+    local s=snapshot(i,'rally',1,'rotated'); s.core.court={id='wall',mode='wall',freeWall=true,
+        x1=-5,x2=5,y1=0,y2=20,z=0,wallMinX=-2,wallMaxX=2,frame=f}
+    PTClient.receive('state',s)
+    p.x,p.y=PTWall.toWorld(s.core.court,0,5)
+    ClientMock.mouseX,ClientMock.mouseY=PTWall.toWorld(s.core.court,0.7,0)
+    ClientMock.buttons={[0]=true,[1]=true}; click()
+    check(last().command=='swing' and math.abs(last().args.aim-0.5)<0.000001,'cardinal wall mouse aim '..i)
+    PTClient.previousBall=nil; ClientMock.draws={}; PTClient.overlay:render()
+    local bx,by=PTWall.toWorld(s.core.court,1,10)
+    local rendered
+    for _,d in ipairs(ClientMock.draws) do if d.w==6 and d.h==6 then rendered=d end end
+    check(rendered and math.abs(rendered.x-(bx*10-by*10-3))<0.000001
+        and math.abs(rendered.y-(bx*5+by*5-13))<0.000001,'cardinal wall ball projection '..i)
+end
 Events.OnDisconnect.callback()
-check(not p.banned and not PTClient.session,'disconnect unconditionally restores gate')
-PTClient.receive('state',snapshot(2,'ready',nil,'c'))
-check(not PTClient.session,'late state cannot resurrect disconnected session')
-PTClient.receive('state',snapshot(1,'ready',nil,'d')); Events.OnPlayerUpdate.callback(p)
-Events.OnPlayerDeath.callback(p)
-check(not p.banned and not PTClient.session,'death restores attack gate and clears session')
-PTClient.receive('state',snapshot(1,'ready',nil,'e')); Events.OnPlayerUpdate.callback(p)
-Events.OnMainMenuEnter.callback()
-check(not p.banned and not PTClient.session,'return to menu releases held guard')
+check(not p.banned and not PTClient.session,'disconnect restores native baseline')
+PTClient.receive('state',snapshot(8,'ready',nil,'rotated'))
+check(not PTClient.session,'late disconnected state cannot resurrect')
+p.x=nil; p.y=nil
+PTClient.receive('state',snapshot(1,'ready',nil,'death')); update(); Events.OnPlayerDeath.callback(p)
+check(not p.banned and not PTClient.session,'death clears guard and session')
+PTClient.receive('state',snapshot(1,'ready',nil,'menu')); update(); Events.OnMainMenuEnter.callback()
+check(not p.banned and not PTClient.session,'main menu clears guard and session')
 print('PASS client checks: '..checks)

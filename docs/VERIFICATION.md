@@ -1,16 +1,16 @@
-# Verification — 2026-10-07
+# Verification — v0.2.0, 2026-10-07
 
-Fresh `scripts/test.ps1` run on installed PZ Kahlua:
+Fresh installed-game Kahlua verification:
 
-- Core: 210 behavioral assertions, including bounded continuous aiming and fractional service-box landings.
-- Server: 97 behavioral assertions, including fractional aim validation, replacement player identity regression and SP bridge.
-- Client: 42 behavioral assertions, including mouse serve/swing, focus, stale inputs, attack-gate restoration, revision/session recovery and interpolation.
-- Total: **349** behavioral assertions (v0.1.1).
-- All three production Lua modules compile in Kahlua; EN/KO sandbox keys match; packaging/test PowerShell parses.
-- Independent read-only code review found a stale player-object slot assignment issue; fixed by checking exact participant object identity before processing commands. Regression verifies no opponent sequence/state change.
+- Core: 218 behavioral assertions.
+- Wall geometry: 66 (four faces, single wall segment, ray traversal, blocked diagonals, unloaded floor).
+- Server: 150 (both-joined activation, sports-only racket, secondary-hand ball, temporary wall sessions, authority, sequences, obstacles, lifecycle, personal best).
+- Client: 60 (waiting input gating, equipment exclusivity, mouse wall start, four transformed frames, native attack guard and cleanup, stale sessions/focus).
+- Inventory conversion: 29 (roundtrip state, native-aware Normal blood no-op, ownership, replay, hands and replacement).
+- **Total: 523 assertions.** All six production Lua modules compile; EN/KO setting/item/menu keys match; non-weapon type and native appearance contracts pass; PowerShell parses.
 
-Staging and local installation each verified **8 identical files** by SHA-256. Local install: `C:/Users/ask13/Zomboid/mods/PlayableTennis`. No Workshop upload, remote repository creation, server preset edit, or existing save edit was performed.
+Independent review found Normal items cannot store HandWeapon blood via its getters/setters. Fixed with a namespaced temporary field and native-aware mock regression. Integration review found no further concrete blocker.
 
-These tests run the actual production Lua under the game's VM with mocked engine boundary objects. They verify rules and adapter decisions. Actual SP rendering, sound, UI clipping, keyboard conflicts, wall tile varieties, save/load serialization, in-game hosting and two-client dedicated networking remain **unverified**. Follow PLAYTEST.md before treating this prototype as a multiplayer release.
+Package and local installation are verified separately by file hashes. No Workshop upload, remote repository creation, existing preset edit or save edit. Runtime package has 16 files including common marker, native item definition, translations and six Lua modules.
 
-Installed bytecode inspection confirms `IsoPlayer.updateInternal2` invokes `OnPlayerUpdate` before input processing and checks `bannedAttacking` in normal attack paths. `UIManager` emits `OnMouseDown` only for an unconsumed world click; event return values do not cancel combat. The scoped guard uses `isBannedAttacking/setBannedAttacking`, preserves native aim, and restores the prior flag after button release or lifecycle cleanup. This is API/source evidence, not a live combat-input test; direct attack calls from other mods and already-running animations are outside the guard.
+Unverified: actual item definition load/held appearance, native timed-action transport and equipment replication across two clients, actual UI aim/coordinates, combat suppression in live gameplay, hosted/dedicated networking, disk save reload, custom wall tile variants. Source/mocks and inspected installed bytecode are not live-game evidence. Follow PLAYTEST.md before release claims.

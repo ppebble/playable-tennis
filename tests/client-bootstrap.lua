@@ -3,7 +3,7 @@ ClientMock = {time=10000,sent={},focused=false,draws={},buttons={}}
 function getSoundManager() return {playUISound=function(_,name) ClientMock.sound=name end} end
 function getTimestampMs() return ClientMock.time end
 function isClient() return true end
-local p={getX=function() return 3 end,getY=function() return 4 end,getZ=function() return 0 end}
+local p={getX=function(self) return self.x or 3 end,getY=function(self) return self.y or 4 end,getZ=function() return 0 end}
 ClientMock.player=p
 function p:isDead() return self.dead or false end
 function p:getVehicle() return self.vehicle end
@@ -11,8 +11,9 @@ function p:isBannedAttacking() return self.banned or false end
 function p:setBannedAttacking(value) self.banned=value end
 function p:getPrimaryHandItem()
     if self.noRacket then return nil end
-    return {getFullType=function() return "Base.TennisRacket" end,getCondition=function() return 10 end}
+    return {getFullType=function() return self.primaryType or "PlayableTennis.SportsTennisRacket" end,getCondition=function() return 10 end}
 end
+function p:getSecondaryHandItem() if self.noBall then return nil end; return {getFullType=function() return self.secondaryType or "Base.TennisBall" end} end
 function getSpecificPlayer() return p end
 function sendClientCommand(player,module,command,args)
     ClientMock.sent[#ClientMock.sent+1]={command=command,args=args}
@@ -23,6 +24,7 @@ function isMouseButtonDown(button) return ClientMock.buttons[button] or false en
 function getMouseX() return ClientMock.mouseX or 4 end
 function getMouseY() return ClientMock.mouseY or 12 end
 function screenToIsoX(_,x,y,z) return x end
+function screenToIsoY(_,x,y,z) return y end
 function getCore() return {isDoingTextEntry=function() return ClientMock.focused end,
     getScreenWidth=function() return 1280 end,getScreenHeight=function() return 720 end} end
 UIFont={Small=1}
@@ -44,7 +46,7 @@ function ISPanel:addToUIManager() end
 function ISPanel:removeFromUIManager() end
 function ISPanel:setWidth(v) self.width=v end
 function ISPanel:setHeight(v) self.height=v end
-function ISPanel:drawLine2() end
+function ISPanel:drawLine2(x,y,x2,y2) ClientMock.lines=ClientMock.lines or {}; ClientMock.lines[#ClientMock.lines+1]={x=x,y=y,x2=x2,y2=y2} end
 function ISPanel:drawText() end
 function ISPanel:drawRect(x,y,w,h) ClientMock.draws[#ClientMock.draws+1]={x=x,y=y,w=w,h=h} end
 function ClientMock.menu()

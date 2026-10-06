@@ -146,6 +146,27 @@ check(a.clock == before, "invalid dt ignored")
 PTCore.step(a, 1000)
 check(a.clock - before < 0.251, "stall catch-up bounded")
 
+-- Free wall mode uses the real narrow wall face, not a registered tennis box.
+for _,depth in ipairs({2,4,8}) do
+    local c={id="free",mode="wall",freeWall=true,x1=-2,x2=2,y1=0,y2=depth+4,z=0,wallMinX=-0.5,wallMaxX=0.5}
+    local s=PTCore.new(c)
+    check(PTCore.serve(s,1,0,depth,0.5),"free practice serves from current position, not artificial baseline")
+    local contact=false
+    for i=1,240 do
+        PTCore.step(s,1/120)
+        if s.wallReady then contact=true; break end
+        if not s.ball then break end
+    end
+    check(contact and s.rally==1,"free practice reaches a single-tile wall from supported distance")
+end
+local free=PTCore.new({mode="wall",freeWall=true,x1=-2,x2=2,y1=0,y2=8,z=0,wallMinX=-0.5,wallMaxX=0.5})
+free.phase="rally"; free.ball={x=1,y=0.01,z=1,vx=0,vy=-4,vz=0}
+PTCore.step(free,1/30)
+check(free.phase=="ready" and free.bestRally==0,"play region cannot substitute for actual wall segment")
+free.phase="rally"; free.ball={x=2.1,y=3,z=0.01,vx=0,vy=0,vz=-1}; free.wallReady=true; free.bounces=0
+PTCore.step(free,1/30)
+check(free.phase=="rally" and free.bounces==1,"free-wall bounce has no imaginary court sideline")
+
 local function near(actual, expected) return math.abs(actual - expected) < 0.000001 end
 for _, mode in ipairs({"tennis", "wall"}) do
     for _, slot in ipairs({1, 2}) do

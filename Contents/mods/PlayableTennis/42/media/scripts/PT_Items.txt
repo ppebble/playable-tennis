@@ -1,0 +1,13 @@
+module PlayableTennis
+{
+    item SportsTennisRacket
+    {
+        DisplayCategory = Sports,
+        ItemType = base:normal,
+        Weight = 1.0,
+        Icon = TennisRacket,
+        ConditionMax = 4,
+        StaticModel = TennisRacket,
+        WorldStaticModel = TennisRacket,
+    }
+}

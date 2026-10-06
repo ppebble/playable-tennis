@@ -1,5 +1,6 @@
 if isClient() then return end
 require "PT_Core"
+require "PT_Wall"
 PTServer = { sessions = {}, members = {}, serial = 0, rates = {} }
 local S = PTServer
 local function now() return getTimestampMs() / 1000 end
@@ -14,6 +15,7 @@ local function database()
     local db = ModData.getOrCreate("PlayableTennis_v1")
     db.courts = db.courts or {}
     db.nextId = db.nextId or 0
+    db.wallBest = db.wallBest or {}
     return db
 end
 local function key(p) return p:getUsername() end
@@ -26,11 +28,22 @@ local function integer(v, lo, hi)
     return type(v) == "number" and v == v and v >= lo and v <= hi and v == math.floor(v)
 end
 local function near(p, c, margin)
+    if c.frame then return not p:isDead() and p:getZ()==c.z and PTWall.contains(c,p:getX(),p:getY(),margin) end
     return not p:isDead() and p:getZ() == c.z and p:getX() >= c.x1-margin and p:getX() <= c.x2+margin
         and p:getY() >= c.y1-margin and p:getY() <= c.y2+margin
 end
 local function flag(sq, name) return sq:has(IsoFlagType[name]) end
+local function squareAt(x,y,z) return getCell():getGridSquare(x,y,z) end
+local function sportsRacket(p)
+    local item=p:getPrimaryHandItem()
+    return item and item:getFullType()=="PlayableTennis.SportsTennisRacket" and item:getCondition()>0
+end
+local function ballInHand(p)
+    local item=p:getSecondaryHandItem()
+    return item and item:getFullType()=="Base.TennisBall"
+end
 local function clearCourt(c)
+    if c.freeWall then return PTWall.valid(c,squareAt) end
     for x=c.x1,c.x2-1 do
         for y=c.y1,c.y2-1 do
             local sq=getCell():getGridSquare(x,y,c.z)
@@ -52,6 +65,11 @@ local function clearCourt(c)
     return true
 end
 S.validateCourt = clearCourt
+local function wallPath(c,x1,y1,x2,y2)
+    local ax,ay=PTWall.toWorld(c,x1,math.max(0.02,y1))
+    local bx,by=PTWall.toWorld(c,x2,math.max(0.02,y2))
+    return PTWall.lineClear(ax,ay,bx,by,c.z,squareAt)
+end
 local function publish(s)
     s.revision=s.revision+1
     local names={}
@@ -65,6 +83,10 @@ end
 local function close(s,reason)
     local c=database().courts[s.core.court.id]
     if c then c.bestRally=math.max(c.bestRally or 0,s.core.bestRally or 0) end
+    if s.core.court.freeWall and s.players[1] then
+        local who=key(s.players[1]); local records=database().wallBest
+        records[who]=math.max(records[who] or 0,s.core.bestRally or 0)
+    end
     for i=1,2 do
         local p=s.players[i]
         if p then S.members[key(p)]=nil; emit(p,"left",{session=s.id,message=reason}) end
@@ -79,6 +101,17 @@ local function list(p)
         end
     end
     emit(p,"list",{courts=courts})
+end
+local function newSession(c)
+    local count=0; for _ in pairs(S.sessions) do count=count+1 end
+    if count>=16 then return nil end
+    S.serial=S.serial+1
+    local s={id=tostring(getTimestampMs())..":"..S.serial,core=PTCore.new(c,{
+        gamesToWin=bounded(settings().GamesToWin,2,1,6),ballSpeed=bounded(settings().BallSpeed,9,6,14),
+        hitRadius=bounded(settings().HitRadius,1.8,1,2.5)}),players={},seq={},revision=0}
+    s.core.bestRally=c.bestRally or 0
+    S.sessions[c.id]=s
+    return s
 end
 function S.dispatch(p,command,args)
     if not p or type(command)~="string" or (args~=nil and type(args)~="table") then return end
@@ -101,9 +134,28 @@ function S.dispatch(p,command,args)
         return
     end
     if command=="leave" then if s then close(s,"A participant left. Join again for a new game.") end; return end
+    if command=="startWall" then
+        if s then fail(p,"Leave your current court/practice before starting wall practice."); return end
+        if p:isDead() or p:getVehicle() or not sportsRacket(p) or not ballInHand(p) then
+            fail(p,"Hold a sports racket in your primary hand and a Tennis Ball in your secondary hand, on foot."); return
+        end
+        local c,why
+        if args.edge then c,why=PTWall.select(p:getX(),p:getY(),p:getZ(),args,squareAt)
+        else c,why=PTWall.find(p:getX(),p:getY(),p:getZ(),args.x,args.y,squareAt) end
+        if not c then fail(p,why); return end
+        c.freeWall=true; c.id="wall:"..who..":"..tostring(getTimestampMs())
+        c.bestRally=database().wallBest[who] or 0
+        s=newSession(c)
+        if not s then fail(p,"Server session limit reached."); return end
+        local px,py=PTWall.toLocal(c,p:getX(),p:getY())
+        local tx,ty=PTCore.aimTarget(s.core,1,0,true)
+        if not wallPath(c,px,py,tx,ty) then S.sessions[c.id]=nil; fail(p,"The shot path to that wall is obstructed."); return end
+        if not PTCore.serve(s.core,1,px,py,0) then S.sessions[c.id]=nil; fail(p,s.core.message); return end
+        s.players[1]=p; S.members[who]=s; publish(s); return
+    end
     if command=="create" then
         if settings().AllowCourtCreation==false and p:getAccessLevel()~="admin" then fail(p,"Court registration is admin-only."); return end
-        if args.mode~="tennis" and args.mode~="wall" then fail(p,"Invalid court mode."); return end
+        if args.mode~="tennis" then fail(p,"Register courts for 1v1 only. Aim at a wall to start solo practice."); return end
         for _,n in ipairs({"x1","y1","x2","y2"}) do
             if not integer(args[n],0,100000) then fail(p,"Invalid court coordinates."); return end
         end
@@ -134,17 +186,12 @@ function S.dispatch(p,command,args)
         if s then fail(p,"Leave your current session first."); return end
         local c=database().courts[args.id]
         if not c or not near(p,c,4) then fail(p,"Court not found nearby."); return end
+        if c.mode~="tennis" then fail(p,"Wall practice no longer needs court registration. Aim at a nearby wall."); return end
         local ok,why=clearCourt(c); if not ok then fail(p,why); return end
         s=S.sessions[c.id]
         if not s then
-            local count=0; for _ in pairs(S.sessions) do count=count+1 end
-            if count>=16 then fail(p,"Server session limit reached."); return end
-            S.serial=S.serial+1
-            s={id=tostring(getTimestampMs())..":"..S.serial,core=PTCore.new(c,{
-                gamesToWin=bounded(settings().GamesToWin,2,1,6),ballSpeed=bounded(settings().BallSpeed,9,6,14),
-                hitRadius=bounded(settings().HitRadius,1.8,1,2.5)}),players={},seq={},revision=0}
-            s.core.bestRally=c.bestRally or 0
-            S.sessions[c.id]=s
+            s=newSession(c)
+            if not s then fail(p,"Server session limit reached."); return end
         end
         local slot=not s.players[1] and 1 or (c.mode=="tennis" and not s.players[2] and 2 or nil)
         if not slot then fail(p,"Court is full."); return end
@@ -158,13 +205,24 @@ function S.dispatch(p,command,args)
     if type(args.aim)~="number" or args.aim~=args.aim or args.aim < -1 or args.aim > 1 then fail(p,"Invalid aim."); return end
     if s.core.court.mode=="tennis" and not (s.players[1] and s.players[2]) then fail(p,"Waiting for a second player."); publish(s); return end
     if not near(p,s.core.court,2) or p:getVehicle() then fail(p,"Stay on the court, alive and on foot."); return end
-    local racket=p:getPrimaryHandItem()
-    if not racket or racket:getFullType()~="Base.TennisRacket" or racket:getCondition()<=0 then fail(p,"Equip an intact Tennis Racket in your primary hand."); return end
+    if not sportsRacket(p) then fail(p,"Equip an intact SPORTS Tennis Racket in your primary hand."); return end
+    if s.core.court.freeWall then
+        local ok,why=PTWall.valid(s.core.court,squareAt,p:getX(),p:getY())
+        if not ok then close(s,why); return end
+    end
     if command=="serve" then
-        if not p:getInventory():containsTypeRecurse("Base.TennisBall") then fail(p,"Carry a Tennis Ball to serve."); return end
+        if not ballInHand(p) then fail(p,"Hold a Tennis Ball in your secondary hand to serve."); return end
         local ok,why=clearCourt(s.core.court); if not ok then close(s,why); return end
     end
-    local accepted=PTCore[command](s.core,slot,p:getX(),p:getY(),args.aim)
+    local px,py=p:getX(),p:getY()
+    if s.core.court.frame then px,py=PTWall.toLocal(s.core.court,px,py) end
+    if s.core.court.freeWall then
+        local tx,ty=PTCore.aimTarget(s.core,slot,args.aim,command=="serve")
+        local from=s.core.ball
+        if not wallPath(s.core.court,command=="swing" and from and from.x or px,
+            command=="swing" and from and from.y or py,tx,ty) then fail(p,"The shot path to the wall is obstructed."); return end
+    end
+    local accepted=PTCore[command](s.core,slot,px,py,args.aim)
     if accepted then s.lastActivity=t end
     publish(s)
 end
@@ -192,6 +250,10 @@ function S.tick()
             local reason=nil
             local stored=database().courts[s.core.court.id]
             if stored then stored.bestRally=math.max(stored.bestRally or 0,s.core.bestRally or 0) end
+            if s.core.court.freeWall and s.players[1] then
+                local who=key(s.players[1]); local records=database().wallBest
+                records[who]=math.max(records[who] or 0,s.core.bestRally or 0)
+            end
             if settings().Enabled==false then reason="Tennis disabled by server." end
             for i=1,2 do
                 local p=s.players[i]
@@ -213,7 +275,16 @@ function S.tick()
         S.accumulator=0
     end
     while S.accumulator>=1/30 do
-        for _,s in pairs(S.sessions) do PTCore.step(s.core,1/30) end
+        for _,s in pairs(S.sessions) do
+            local c=s.core.court
+            local old=s.core.ball and {x=s.core.ball.x,y=s.core.ball.y}
+            PTCore.step(s.core,1/30)
+            local ball=s.core.ball
+            if c.freeWall and old and ball and not wallPath(c,old.x,old.y,ball.x,ball.y) then
+                s.core.ball=nil; s.core.phase="ready"; s.core.rally=0
+                s.core.message="Ball met an obstacle/unloaded floor. Hold the ball to restart."
+            end
+        end
         S.accumulator=S.accumulator-1/30
     end
     if t-(S.lastSend or 0)>=0.1 then

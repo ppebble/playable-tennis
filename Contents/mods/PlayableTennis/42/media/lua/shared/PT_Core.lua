@@ -63,7 +63,7 @@ local function landing(s)
         else point(s, s.lastHit, "Two bounces.") end
         return
     end
-    if not inside(s, b.x, b.y) then failShot(s, "Out."); return end
+    if not c.freeWall and not inside(s, b.x, b.y) then failShot(s, "Out."); return end
     if s.court.mode == "wall" then
         if not s.wallReady then failShot(s, "Ball bounced before reaching the wall."); return end
     elseif s.servicePending then
@@ -92,7 +92,7 @@ local function integrate(s, dt)
             local fraction = (oy - c.y1) / (oy - b.y)
             local wallZ = oz + (b.z - oz) * fraction
             local wallX = ox + (b.x - ox) * fraction
-            if wallX < c.x1 or wallX > c.x2 or wallZ <= 0 or wallZ > 2.8 then
+            if wallX < (c.wallMinX or c.x1) or wallX > (c.wallMaxX or c.x2) or wallZ <= 0 or wallZ > 2.8 then
                 failShot(s, "Missed the wall (height 0 to 2.8)."); return
             end
             b.y, b.vy = c.y1 + (c.y1 - b.y), -b.vy
@@ -158,6 +158,10 @@ function PTCore.aimTarget(s, slot, aim, serving)
         or c.x2 <= c.x1 or c.y2 <= c.y1 or (c.mode ~= "wall" and c.mode ~= "tennis") then return nil end
     local width, length = c.x2 - c.x1, c.y2 - c.y1
     if c.mode == "wall" then
+        if c.freeWall then
+            local lo,hi=c.wallMinX,c.wallMaxX
+            return (lo+hi)/2 + aim*(hi-lo)*0.35,c.y1
+        end
         return midX(s) + aim * width * (serving and 0.18 or 0.3), c.y1
     end
     if serving then
@@ -176,7 +180,9 @@ function PTCore.serve(s, slot, px, py, aim)
     if slot ~= s.server then return reject(s, "The other player serves.") end
     local c, wall = s.court, s.court.mode == "wall"
     local baseline = (wall or slot == 2) and c.y2 or c.y1
-    if px < c.x1 + 0.2 or px > c.x2 - 0.2 or math.abs(py - baseline) > 1.5 then
+    if c.freeWall then baseline=py end
+    if px < c.x1 + 0.2 or px > c.x2 - 0.2 or math.abs(py - baseline) > 1.5
+        or (c.freeWall and (py<1 or py>c.y2+2)) then
         return reject(s, "Stand within 1.5 tiles of your baseline, inside the court width.")
     end
     local even = (s.points[1] + s.points[2]) % 2 == 0
