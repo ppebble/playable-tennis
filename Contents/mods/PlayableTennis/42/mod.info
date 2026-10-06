@@ -1,0 +1,6 @@
+name=Playable Tennis (Prototype)
+id=PlayableTennis
+author=ask13
+modversion=0.1.0
+versionMin=42.20
+description=Server-authoritative 1v1 tennis and solo north-wall practice. Register courts using the world context menu. Equip a Tennis Racket, carry a Tennis Ball. J swing, K serve. Prototype: no AI, no sets, no combat swing animation. Live multiplayer validation pending.

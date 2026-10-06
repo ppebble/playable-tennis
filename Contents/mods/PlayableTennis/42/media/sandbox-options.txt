@@ -1,0 +1,43 @@
+VERSION = 1,
+
+option PlayableTennis.Enabled
+{
+    type = boolean,
+    default = true,
+    page = PlayableTennis,
+    translation = PlayableTennis_Enabled,
+}
+option PlayableTennis.AllowCourtCreation
+{
+    type = boolean,
+    default = true,
+    page = PlayableTennis,
+    translation = PlayableTennis_AllowCourtCreation,
+}
+option PlayableTennis.GamesToWin
+{
+    type = integer,
+    min = 1,
+    max = 6,
+    default = 2,
+    page = PlayableTennis,
+    translation = PlayableTennis_GamesToWin,
+}
+option PlayableTennis.BallSpeed
+{
+    type = integer,
+    min = 6,
+    max = 14,
+    default = 9,
+    page = PlayableTennis,
+    translation = PlayableTennis_BallSpeed,
+}
+option PlayableTennis.HitRadius
+{
+    type = double,
+    min = 1.0,
+    max = 2.5,
+    default = 1.8,
+    page = PlayableTennis,
+    translation = PlayableTennis_HitRadius,
+}

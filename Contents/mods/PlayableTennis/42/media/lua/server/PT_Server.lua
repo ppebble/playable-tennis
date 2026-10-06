@@ -1,0 +1,227 @@
+if isClient() then return end
+require "PT_Core"
+PTServer = { sessions = {}, members = {}, serial = 0, rates = {} }
+local S = PTServer
+local function now() return getTimestampMs() / 1000 end
+local function settings()
+    return (SandboxVars and SandboxVars.PlayableTennis) or {}
+end
+local function bounded(value, default, low, high)
+    if type(value) ~= "number" or value ~= value then return default end
+    return math.max(low, math.min(high, value))
+end
+local function database()
+    local db = ModData.getOrCreate("PlayableTennis_v1")
+    db.courts = db.courts or {}
+    db.nextId = db.nextId or 0
+    return db
+end
+local function key(p) return p:getUsername() end
+local function emit(p, command, args)
+    if isServer() then sendServerCommand(p, "PlayableTennis", command, args)
+    elseif PTClient then PTClient.receive(command, args) end
+end
+local function fail(p, message) emit(p, "error", { message = message }) end
+local function integer(v, lo, hi)
+    return type(v) == "number" and v == v and v >= lo and v <= hi and v == math.floor(v)
+end
+local function near(p, c, margin)
+    return not p:isDead() and p:getZ() == c.z and p:getX() >= c.x1-margin and p:getX() <= c.x2+margin
+        and p:getY() >= c.y1-margin and p:getY() <= c.y2+margin
+end
+local function flag(sq, name) return sq:has(IsoFlagType[name]) end
+local function clearCourt(c)
+    for x=c.x1,c.x2-1 do
+        for y=c.y1,c.y2-1 do
+            local sq=getCell():getGridSquare(x,y,c.z)
+            if not sq or not sq:getFloor() then return false,"Court must be fully loaded and have a floor." end
+            if sq:isSolid() or sq:isSolidTrans() or flag(sq,"water") then return false,"Clear solid obstacles/water from the court." end
+            if x>c.x1 and (flag(sq,"collideW") or flag(sq,"WallW") or flag(sq,"WindowW") or flag(sq,"DoorWallW")) then
+                return false,"An interior west wall/fence blocks this court."
+            end
+            if y>c.y1 and (flag(sq,"collideN") or flag(sq,"WallN") or flag(sq,"WindowN") or flag(sq,"DoorWallN")) then
+                return false,"An interior north wall/fence blocks this court."
+            end
+            if c.mode=="wall" and y==c.y1 then
+                if not flag(sq,"WallN") or flag(sq,"WindowN") or flag(sq,"DoorWallN") or flag(sq,"HoppableN") then
+                    return false,"Wall practice needs an unbroken solid NORTH wall (no doors/windows/fences)."
+                end
+            end
+        end
+    end
+    return true
+end
+S.validateCourt = clearCourt
+local function publish(s)
+    s.revision=s.revision+1
+    local names={}
+    for i=1,2 do if s.players[i] then names[i]=key(s.players[i]) end end
+    for slot=1,2 do
+        local p=s.players[slot]
+        if p then emit(p,"state",{session=s.id,slot=slot,revision=s.revision,lastSeq=s.seq[slot] or 0,
+            core=PTCore.snapshot(s.core),waiting=s.core.court.mode=="tennis" and not (s.players[1] and s.players[2]),players=names}) end
+    end
+end
+local function close(s,reason)
+    local c=database().courts[s.core.court.id]
+    if c then c.bestRally=math.max(c.bestRally or 0,s.core.bestRally or 0) end
+    for i=1,2 do
+        local p=s.players[i]
+        if p then S.members[key(p)]=nil; emit(p,"left",{session=s.id,message=reason}) end
+    end
+    S.sessions[s.core.court.id]=nil
+end
+local function list(p)
+    local courts={}
+    for _,c in pairs(database().courts) do
+        if near(p,c,45) and #courts<32 then
+            courts[#courts+1]={id=c.id,x1=c.x1,y1=c.y1,x2=c.x2,y2=c.y2,z=c.z,mode=c.mode,bestRally=c.bestRally or 0}
+        end
+    end
+    emit(p,"list",{courts=courts})
+end
+function S.dispatch(p,command,args)
+    if not p or type(command)~="string" or (args~=nil and type(args)~="table") then return end
+    args=args or {}
+    local who=key(p)
+    local t=now()
+    local rate=S.rates[who]
+    if not rate or t-rate.time>=1 then rate={time=t,count=0}; S.rates[who]=rate end
+    rate.count=rate.count+1
+    if rate.count>16 then return end
+    if settings().Enabled==false then fail(p,"Playable Tennis is disabled by the server."); return end
+    local s=S.members[who]
+    if s and p~=s.players[1] and p~=s.players[2] then
+        fail(p,"Player connection changed. Wait for session cleanup, then join again.")
+        return
+    end
+    if command=="sync" then
+        list(p)
+        if s then publish(s) else emit(p,"left",{message="No active session. Join a nearby court."}) end
+        return
+    end
+    if command=="leave" then if s then close(s,"A participant left. Join again for a new game.") end; return end
+    if command=="create" then
+        if settings().AllowCourtCreation==false and p:getAccessLevel()~="admin" then fail(p,"Court registration is admin-only."); return end
+        if args.mode~="tennis" and args.mode~="wall" then fail(p,"Invalid court mode."); return end
+        for _,n in ipairs({"x1","y1","x2","y2"}) do
+            if not integer(args[n],0,100000) then fail(p,"Invalid court coordinates."); return end
+        end
+        if not integer(args.z,0,7) then fail(p,"Invalid floor."); return end
+        local c={x1=math.min(args.x1,args.x2),x2=math.max(args.x1,args.x2),y1=math.min(args.y1,args.y2),y2=math.max(args.y1,args.y2),z=args.z,mode=args.mode}
+        if c.x2-c.x1<6 or c.x2-c.x1>14 or c.y2-c.y1<12 or c.y2-c.y1>30 then fail(p,"Court width must be 6-14 and length 12-30 tiles (north/south)."); return end
+        if not near(p,c,3) then fail(p,"Stand beside the court to register it."); return end
+        local db=database()
+        local count,owned=0,0
+        for _,other in pairs(db.courts) do
+            count=count+1
+            if other.owner==who then owned=owned+1 end
+            if c.z==other.z and c.x1<other.x2 and c.x2>other.x1 and c.y1<other.y2 and c.y2>other.y1 then fail(p,"This overlaps a registered court."); return end
+        end
+        if count>=64 or owned>=4 then fail(p,"Court limit reached (4 per owner, 64 per world). Remove an idle court first."); return end
+        local ok,why=clearCourt(c)
+        if not ok then fail(p,why); return end
+        db.nextId=db.nextId+1; c.id=tostring(db.nextId); c.owner=who; c.bestRally=0
+        db.courts[c.id]=c
+        list(p); return
+    end
+    if command=="remove" then
+        local c=database().courts[args.id]
+        if not c or not near(p,c,5) or (c.owner~=who and p:getAccessLevel()~="admin") or S.sessions[c.id] then fail(p,"Only the owner/admin may remove a nearby idle court."); return end
+        database().courts[c.id]=nil; list(p); return
+    end
+    if command=="join" then
+        if s then fail(p,"Leave your current session first."); return end
+        local c=database().courts[args.id]
+        if not c or not near(p,c,4) then fail(p,"Court not found nearby."); return end
+        local ok,why=clearCourt(c); if not ok then fail(p,why); return end
+        s=S.sessions[c.id]
+        if not s then
+            local count=0; for _ in pairs(S.sessions) do count=count+1 end
+            if count>=16 then fail(p,"Server session limit reached."); return end
+            S.serial=S.serial+1
+            s={id=tostring(getTimestampMs())..":"..S.serial,core=PTCore.new(c,{
+                gamesToWin=bounded(settings().GamesToWin,2,1,6),ballSpeed=bounded(settings().BallSpeed,9,6,14),
+                hitRadius=bounded(settings().HitRadius,1.8,1,2.5)}),players={},seq={},revision=0}
+            s.core.bestRally=c.bestRally or 0
+            S.sessions[c.id]=s
+        end
+        local slot=not s.players[1] and 1 or (c.mode=="tennis" and not s.players[2] and 2 or nil)
+        if not slot then fail(p,"Court is full."); return end
+        s.players[slot]=p; S.members[who]=s; publish(s); return
+    end
+    if command~="serve" and command~="swing" then return end
+    if not s or args.session~=s.id then fail(p,"Session changed; sync and join again."); return end
+    local slot=s.players[1]==p and 1 or 2
+    if not integer(args.seq,1,2147483647) or args.seq<=(s.seq[slot] or 0) then return end
+    s.seq[slot]=args.seq
+    if not integer(args.aim,-1,1) then fail(p,"Invalid aim."); return end
+    if s.core.court.mode=="tennis" and not (s.players[1] and s.players[2]) then fail(p,"Waiting for a second player."); publish(s); return end
+    if not near(p,s.core.court,2) or p:getVehicle() then fail(p,"Stay on the court, alive and on foot."); return end
+    local racket=p:getPrimaryHandItem()
+    if not racket or racket:getFullType()~="Base.TennisRacket" or racket:getCondition()<=0 then fail(p,"Equip an intact Tennis Racket in your primary hand."); return end
+    if command=="serve" then
+        if not p:getInventory():containsTypeRecurse("Base.TennisBall") then fail(p,"Carry a Tennis Ball to serve."); return end
+        local ok,why=clearCourt(s.core.court); if not ok then close(s,why); return end
+    end
+    local accepted=PTCore[command](s.core,slot,p:getX(),p:getY(),args.aim)
+    if accepted then s.lastActivity=t end
+    publish(s)
+end
+local function onlineSet()
+    local result={}
+    if isServer() then
+        local players=getOnlinePlayers()
+        for i=0,players:size()-1 do result[key(players:get(i))]=players:get(i) end
+    else
+        local p=getSpecificPlayer(0); if p then result[key(p)]=p end
+    end
+    return result
+end
+function S.tick()
+    local t=now()
+    local delta=t-(S.lastTick or t); S.lastTick=t
+    if delta<0 then delta=0 end
+    S.accumulator=(S.accumulator or 0)+math.min(delta,0.2)
+    if t-(S.lastAudit or 0)>=1 then
+        S.lastAudit=t
+        local online=onlineSet()
+        for who in pairs(S.rates) do if not online[who] then S.rates[who]=nil end end
+        local closing={}
+        for _,s in pairs(S.sessions) do
+            local reason=nil
+            local stored=database().courts[s.core.court.id]
+            if stored then stored.bestRally=math.max(stored.bestRally or 0,s.core.bestRally or 0) end
+            if settings().Enabled==false then reason="Tennis disabled by server." end
+            for i=1,2 do
+                local p=s.players[i]
+                if p and (online[key(p)]~=p or not near(p,s.core.court,8) or p:getVehicle()) then reason="Participant disconnected, died, or left the court." end
+            end
+            local valid,why=clearCourt(s.core.court)
+            if not valid then reason=why end
+            if reason then closing[#closing+1]={s=s,reason=reason} end
+        end
+        for _,entry in ipairs(closing) do close(entry.s,entry.reason) end
+    end
+    -- A long server stall is a let: replay current point rather than integrate a lethal catch-up burst.
+    if delta>0.5 then
+        for _,s in pairs(S.sessions) do
+            if s.core.phase=="rally" then
+                s.core.ball=nil; s.core.phase="ready"; s.core.message="Server pause: replay point."
+            end
+        end
+        S.accumulator=0
+    end
+    while S.accumulator>=1/30 do
+        for _,s in pairs(S.sessions) do PTCore.step(s.core,1/30) end
+        S.accumulator=S.accumulator-1/30
+    end
+    if t-(S.lastSend or 0)>=0.1 then
+        S.lastSend=t
+        for _,s in pairs(S.sessions) do publish(s) end
+    end
+end
+Events.OnClientCommand.Add(function(module,command,p,args)
+    if module=="PlayableTennis" then S.dispatch(p,command,args) end
+end)
+Events.OnTick.Add(S.tick)

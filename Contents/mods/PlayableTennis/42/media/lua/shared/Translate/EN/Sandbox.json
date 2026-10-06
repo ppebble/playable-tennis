@@ -1,0 +1,8 @@
+{
+  "Sandbox_PlayableTennis": "Playable Tennis",
+  "Sandbox_PlayableTennis_Enabled": "Enable tennis and wall practice",
+  "Sandbox_PlayableTennis_AllowCourtCreation": "Allow players to register courts",
+  "Sandbox_PlayableTennis_GamesToWin": "Games needed to win (first to N)",
+  "Sandbox_PlayableTennis_BallSpeed": "Ball horizontal speed",
+  "Sandbox_PlayableTennis_HitRadius": "Racket reach in tiles"
+}
