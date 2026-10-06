@@ -27,9 +27,18 @@ function W.toWorld(c,x,y)
     if not f then return x,y end
     return f.originX+x*f.ux+y*f.vx,f.originY+x*f.uy+y*f.vy
 end
+function W.localBounds(c,y)
+    local flare=c.freeWall and math.max(0,math.min(14,y))/14*4 or 0
+    return c.x1-flare,c.x2+flare
+end
+function W.containsLocal(c,x,y,margin)
+    margin=margin or 0
+    local left,right=W.localBounds(c,y)
+    return x>=left-margin and x<=right+margin and y>=c.y1-margin and y<=c.y2+margin
+end
 function W.contains(c,x,y,margin)
-    x,y=W.toLocal(c,x,y); margin=margin or 0
-    return x>=c.x1-margin and x<=c.x2+margin and y>=c.y1-margin and y<=c.y2+margin
+    x,y=W.toLocal(c,x,y)
+    return W.containsLocal(c,x,y,margin)
 end
 -- Grid traversal checks both edges at a corner, avoiding diagonal passage
 -- through walls. It deliberately does not require a registered clear rectangle.
@@ -77,12 +86,18 @@ function W.valid(c,getSquare,px,py)
         end
     end
     if px~=nil and py~=nil then
-        local _,depth=W.toLocal(c,px,py)
+        local lx,depth=W.toLocal(c,px,py)
         if depth<=0 then return false,"Stay on the selected side of the practice wall." end
-        local tx,ty=W.toWorld(c,0,0.05)
-        if not W.lineClear(px,py,tx,ty,c.z,getSquare) then
-            return false,"The route to the wall needs loaded floor and no obstacles."
+        -- A blocked route to the middle does not make an open end unusable.
+        local nearest=math.max(c.wallMinX+0.05,math.min(c.wallMaxX-0.05,lx))
+        local tx,ty=W.toWorld(c,nearest,0.05)
+        local clear=W.lineClear(px,py,tx,ty,c.z,getSquare)
+        for offset=wall.minOffset,wall.maxOffset do
+            if clear then break end
+            tx,ty=W.toWorld(c,offset,0.05)
+            clear=W.lineClear(px,py,tx,ty,c.z,getSquare)
         end
+        if not clear then return false,"No clear route to this wall. Move past obstacles onto loaded floor." end
     end
     return true
 end
@@ -97,16 +112,14 @@ function W.select(px,py,z,args,getSquare)
     local x,y,edge=args.x,args.y,args.edge
     if not solidWall(getSquare(x,y,z),edge) then return nil,"Choose a solid wall without doors, windows or fences." end
     local ox,oy=x+(edge=="N" and 0.5 or 0),y+(edge=="W" and 0.5 or 0)
-    local distance=math.sqrt((px-ox)^2+(py-oy)^2)
     local depth=edge=="N" and py-oy or px-ox
-    if distance>8 or math.abs(depth)<2 then return nil,"Stand 2 to 8 tiles from the wall." end
+    if math.abs(depth)>14 or math.abs(depth)<1 then return nil,"Stand 1 to 14 tiles from the wall, measured straight out from its face." end
     local sign=depth>0 and 1 or -1
-    local c={mode="wall",freeWall=true,z=z,y1=0,y2=math.abs(depth)+4,
+    local c={mode="wall",freeWall=true,z=z,y1=0,y2=14,
         frame={originX=ox,originY=oy,ux=edge=="N" and 1 or 0,uy=edge=="W" and 1 or 0,
             vx=edge=="W" and sign or 0,vy=edge=="N" and sign or 0},
         wall={tilex=x,tiley=y,edge=edge,minOffset=0,maxOffset=0}}
-    local lx=W.toLocal(c,px,py)
-    c.x1,c.x2=math.min(-2,lx-1),math.max(2,lx+1)
+    c.x1,c.x2=-2,2
     for _,direction in ipairs({-1,1}) do
         for n=1,4 do
             local offset=n*direction
@@ -116,29 +129,33 @@ function W.select(px,py,z,args,getSquare)
     end
     c.wallMinX,c.wallMaxX=c.wall.minOffset-0.5,c.wall.maxOffset+0.5
     c.x1,c.x2=math.min(c.x1,c.wallMinX),math.max(c.x2,c.wallMaxX)
-    local tx,ty=W.toWorld(c,0,0.05)
-    if not W.lineClear(px,py,tx,ty,z,getSquare) then return nil,"The route to the wall needs loaded floor and no obstacles." end
+    if not W.contains(c,px,py,0) then return nil,"Move closer sideways to the selected wall's practice area." end
+    local valid,reason=W.valid(c,getSquare,px,py)
+    if not valid then return nil,reason end
     return c
 end
 function W.find(px,py,z,wx,wy,getSquare)
     if not finite(wx) or not finite(wy) or not finite(px) or not finite(py) or not finite(z) or z~=math.floor(z)
-        or math.abs(wx-px)>10 or math.abs(wy-py)>10 then return nil,"Aim at a nearby solid wall." end
-    local best,bestDistance
-    for x=math.floor(wx)-1,math.floor(wx)+1 do
-        for y=math.floor(wy)-1,math.floor(wy)+1 do
+        or math.abs(wx-px)>20 or math.abs(wy-py)>20 then return nil,"Aim near a solid wall within 14 tiles of its face." end
+    local best,bestDistance,reason,reasonDistance
+    for x=math.floor(wx)-3,math.floor(wx)+3 do
+        for y=math.floor(wy)-3,math.floor(wy)+3 do
             for _,edge in ipairs({"N","W"}) do
                 if solidWall(getSquare(x,y,z),edge) then
-                    local c=W.select(px,py,z,{x=x,y=y,edge=edge},getSquare)
+                    local c,err=W.select(px,py,z,{x=x,y=y,edge=edge},getSquare)
                     if c then
                         local ox,oy=c.frame.originX,c.frame.originY
                         local distance=(wx-ox)^2+(wy-oy)^2
                         if not bestDistance or distance<bestDistance then best,bestDistance=c,distance end
+                    else
+                        local distance=(wx-x)^2+(wy-y)^2
+                        if not reasonDistance or distance<reasonDistance then reason,reasonDistance=err,distance end
                     end
                 end
             end
         end
     end
     if best then return best end
-    return nil,"Aim at a solid wall 2 to 8 tiles away with a clear route."
+    return nil,reason or "Aim near a solid wall on your floor; doors, windows and fences cannot be used."
 end
 return PTWall

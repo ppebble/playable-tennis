@@ -95,6 +95,8 @@ local function integrate(s, dt)
             if wallX < (c.wallMinX or c.x1) or wallX > (c.wallMaxX or c.x2) or wallZ <= 0 or wallZ > 2.8 then
                 failShot(s, "Missed the wall (height 0 to 2.8)."); return
             end
+            -- Reflect only the wall-normal velocity. Preserve lateral speed
+            -- and the gravity arc instead of retargeting the return landing.
             b.y, b.vy = c.y1 + (c.y1 - b.y), -b.vy
             s.wallReady, s.bounces = true, 0
             s.rally = s.rally + 1
@@ -181,8 +183,11 @@ function PTCore.serve(s, slot, px, py, aim)
     local c, wall = s.court, s.court.mode == "wall"
     local baseline = (wall or slot == 2) and c.y2 or c.y1
     if c.freeWall then baseline=py end
-    if px < c.x1 + 0.2 or px > c.x2 - 0.2 or math.abs(py - baseline) > 1.5
-        or (c.freeWall and (py<1 or py>c.y2+2)) then
+    if c.freeWall then
+        if not PTWall.containsLocal(c, px, py, 0) or py < c.y1 + 1 then
+            return reject(s, "Stand inside the wall practice area, 1 to 14 tiles from the wall.")
+        end
+    elseif px < c.x1 + 0.2 or px > c.x2 - 0.2 or math.abs(py - baseline) > 1.5 then
         return reject(s, "Stand within 1.5 tiles of your baseline, inside the court width.")
     end
     local even = (s.points[1] + s.points[2]) % 2 == 0
@@ -215,7 +220,9 @@ function PTCore.swing(s, slot, px, py, aim)
     end
     if b.z < 0.15 or b.z > 2.4 then return reject(s, "Ball is outside racket height (0.15 to 2.4).") end
     if (px - b.x) ^ 2 + (py - b.y) ^ 2 > s.options.hitRadius ^ 2 then return reject(s, "Ball is out of reach.") end
-    if px < c.x1 - 2 or px > c.x2 + 2 or py < c.y1 - 2 or py > c.y2 + 2 then return reject(s, "Return to the court.") end
+    if c.freeWall then
+        if not PTWall.containsLocal(c, px, py, 0) then return reject(s, "Return to the wall practice area.") end
+    elseif px < c.x1 - 2 or px > c.x2 + 2 or py < c.y1 - 2 or py > c.y2 + 2 then return reject(s, "Return to the court.") end
     local tx, ty = PTCore.aimTarget(s, slot, aim, false)
     launch(s, b.x, b.y, b.z, tx, ty, wall)
     s.lastHit, s.bounces, s.wallReady = slot, 0, false

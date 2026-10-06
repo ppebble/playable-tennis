@@ -3,6 +3,7 @@ require "ISUI/ISPanel"
 require "ISUI/ISContextMenu"
 require "PT_Core"
 require "PT_Wall"
+require "PT_Swing"
 
 PTClient = { courts = {}, seq = 0, revision = -1, retired = {}, lastSync = 0 }
 local C = PTClient
@@ -12,6 +13,10 @@ local function notice(message)
     C.messageUntil = now() + 7000
 end
 local function player() return getSpecificPlayer(0) end
+local function swingAnimation()
+    local _,reason=PTSwing.play(player(),now())
+    if reason=="busy" then notice("Swing animation unavailable while another action is in progress.") end
+end
 local function holdsSports(p)
     local item=p and p:getPrimaryHandItem()
     return item and item:getFullType()=="PlayableTennis.SportsTennisRacket"
@@ -83,6 +88,7 @@ local function startWallAt(args)
     if not equippedToStart(player()) then notice("Hold a sports racket in your primary hand and Tennis Ball in your secondary hand."); return end
     if now()<(C.wallPendingUntil or 0) then return end
     C.wallPendingUntil=now()+500
+    swingAnimation()
     send("startWall",args)
 end
 function C.receive(command, args)
@@ -113,13 +119,13 @@ function C.receive(command, args)
             if C.session then C.retired[C.session] = true end
             C.seq, C.revision, C.previousBall = 0, -1, nil
         elseif C.core and C.core.phase == "rally" and args.core.phase == "rally"
-            and C.core.shotId == args.core.shotId
-            and C.core.bounces == args.core.bounces
-            and C.core.wallReady == args.core.wallReady then
+            and C.core.shotId == args.core.shotId then
             C.previousBall = C.core.ball
         else
             C.previousBall = nil
         end
+        local elapsed = sameSession and C.receivedAt and now()-C.receivedAt or 100
+        C.ballInterval = elapsed > 0 and math.max(50,math.min(200,elapsed)) or 100
         C.session, C.slot, C.core = args.session, args.slot, args.core
         C.waiting, C.names = args.waiting, args.players
         C.seq = math.max(C.seq, tonumber(args.lastSeq) or 0)
@@ -163,20 +169,25 @@ local function input(command,selectedAim)
     end
     C.seq = C.seq + 1
     C.flashUntil = now() + 180
+    swingAnimation()
     send(command, { aim = selectedAim or aim(), seq = C.seq, session = C.session })
 end
 local function mouseDown()
     local p=player()
     -- This event is emitted only for a world click unconsumed by other UI.
     -- Its return value does not cancel combat: OnPlayerUpdate applies the gate.
-    if not isMouseButtonDown(1) or inputBlocked() or C.textWasFocused then return end
+    if inputBlocked() or C.textWasFocused then return end
     if not C.session then
+        if not isMouseButtonDown(1) then return end
         if equippedToStart(p) then
             startWallAt({x=screenToIsoX(0,getMouseX(),getMouseY(),p:getZ()),y=screenToIsoY(0,getMouseX(),getMouseY(),p:getZ())})
         end
         return
     end
     if not mouseEligible(p) then return end
+    -- Aim stance is only needed to start/restart a point. During the rally,
+    -- cursor targeting is independent of vanilla aiming and running speed.
+    if C.core.phase=="ready" and not isMouseButtonDown(1) then return end
     updateGuard(p)
     input(C.core.phase=="ready" and "serve" or "swing",mouseAim())
 end
@@ -253,6 +264,53 @@ local function project(x, y, z)
     if C.core and C.core.court.frame then x,y=PTWall.toWorld(C.core.court,x,y) end
     return isoToScreenX(0, x, y, z), isoToScreenY(0, x, y, z)
 end
+-- Presentation only: interpolate authoritative samples through wall/floor contacts.
+-- Stop at the last sample if packets stop; never extrapolate a fictional hit.
+function C.ballPosition()
+    local ball=C.core and C.core.ball
+    if not ball then return end
+    local old=C.previousBall
+    if not old then return ball.x,ball.y,ball.z end
+    local t=math.max(0,math.min(1,(now()-C.receivedAt)/(C.ballInterval or 100)))
+    local y=old.y+(ball.y-old.y)*t
+    local court=C.core.court
+    if court.mode=="wall" and old.vy and ball.vy and old.vy<0 and ball.vy>0
+        and old.y>=court.y1 and ball.y>=court.y1 then
+        -- Equal positions before/after reflection must not look stationary.
+        -- Interpolate the travelled path via the wall, not its endpoint chord.
+        local incoming=(old.y-court.y1)/(-old.vy)
+        local outgoing=(ball.y-court.y1)/ball.vy
+        local duration=incoming+outgoing
+        if duration>0 then
+            local elapsed=t*duration
+            y=elapsed<=incoming and old.y+old.vy*elapsed
+                or court.y1+ball.vy*(elapsed-incoming)
+        end
+    end
+    return old.x+(ball.x-old.x)*t,y,old.z+(ball.z-old.z)*t
+end
+local worldBallRender = Events.OnPostRender and getRenderer and getPlayer
+local function drawBall(draw)
+    if not C.core or not player() or math.floor(player():getZ())~=C.core.court.z then return end
+    local bx,by,bz=C.ballPosition()
+    if not bx then return end
+    local z=C.core.court.z
+    local sx,sy=project(bx,by,z)
+    draw(sx-4,sy-2,8,4,0.5,0,0,0)
+    local px,py=project(bx,by,z+math.max(0,bz)/3)
+    draw(px-3,py-3,6,6,1,0.9,1,0.15)
+end
+if worldBallRender then
+    Events.OnPostRender.Add(function()
+        if not C.overlay or getPlayer()~=player() then return end
+        -- B42 isoToScreen divides camera-relative coordinates by zoom. The
+        -- world FBO expects those coordinates before zoom, unlike UIManager.
+        local zoom=getCore():getZoom(0)
+        drawBall(function(x,y,w,h,a,r,g,b)
+            getRenderer():render(nil,x*zoom,y*zoom,w*zoom,h*zoom,r,g,b,a,nil)
+        end)
+    end)
+end
 function Overlay:worldLine(x1,y1,x2,y2,z,r,g,b)
     local ax,ay = project(x1,y1,z)
     local bx,by = project(x2,y2,z)
@@ -275,9 +333,20 @@ function Overlay:render()
                 self:worldLine(x1,(y2+my)/2,x2,(y2+my)/2,z,1,1,1)
                 self:worldLine(mx,(y1+my)/2,mx,(y2+my)/2,z,1,1,1)
             else
-                self:worldLine(court.wallMinX or x1,y1,court.wallMaxX or x2,y1,z+0.4,0.3,0.8,1)
+                -- Mark the actual wall foot, not a fractional storey above it.
+                local left,right=court.wallMinX or x1,court.wallMaxX or x2
+                self:worldLine(left,y1,right,y1,z,0.3,0.8,1)
+                self:worldLine(left,y1,left,y1+0.6,z,0.3,0.8,1)
+                self:worldLine(right,y1,right,y1+0.6,z,0.3,0.8,1)
+                if court.freeWall then
+                    local frontLeft,frontRight=PTWall.localBounds(court,y1)
+                    local backLeft,backRight=PTWall.localBounds(court,y2)
+                    self:worldLine(frontLeft,y1,backLeft,y2,z,0.25,0.55,0.6)
+                    self:worldLine(frontRight,y1,backRight,y2,z,0.25,0.55,0.6)
+                    self:worldLine(backLeft,y2,backRight,y2,z,0.25,0.55,0.6)
+                end
             end
-            if mouseEligible(player()) and isMouseButtonDown(1) and not inputBlocked() then
+            if mouseEligible(player()) and (core.phase=="rally" or isMouseButtonDown(1)) and not inputBlocked() then
                 local tx,ty=PTCore.aimTarget(core,C.slot,mouseAim(),core.phase=="ready")
                 if tx then
                     local sx,sy=project(tx,ty,z)
@@ -285,19 +354,8 @@ function Overlay:render()
                     self:drawLine2(sx,sy-5,sx,sy+5,1,0.2,1,0.5)
                 end
             end
-            local ball = core.ball
-            if ball then
-                local bx,by,bz = ball.x,ball.y,ball.z
-                local old = C.previousBall
-                if old then
-                    local t = math.min(1, math.max(0, (now() - C.receivedAt)/100))
-                    bx,by,bz = old.x+(bx-old.x)*t,old.y+(by-old.y)*t,old.z+(bz-old.z)*t
-                end
-                local sx,sy = project(bx,by,z)
-                self:drawRect(sx-4,sy-2,8,4,0.5,0,0,0)
-                -- Physics height is metres; one rendered storey is approximately 3 m.
-                local px,py = project(bx,by,z+math.max(0,bz)/3)
-                self:drawRect(px-3,py-3,6,6,1,0.9,1,0.15)
+            if not worldBallRender then
+                drawBall(function(x,y,w,h,a,r,g,b) self:drawRect(x,y,w,h,a,r,g,b) end)
             end
         end
         local x,y = 24,160
@@ -308,15 +366,18 @@ function Overlay:render()
         line("Playable Tennis | " .. court.mode .. " | Slot " .. tostring(C.slot),0)
         line("Games " .. core.games[1] .. " : " .. core.games[2] .. "    " .. score(core) .. "    " .. core.phase,1)
         if court.mode == "wall" then
-            line("Rally " .. tostring(core.rally) .. " | Best " .. tostring(core.bestRally),2)
+            line("Rally " .. tostring(core.rally) .. " | Best " .. tostring(core.bestRally)
+                .. " | Wall " .. tostring((court.wallMaxX or x2)-(court.wallMinX or x1))
+                .. " tiles | Z " .. tostring(z),2)
         else
             line("Server: slot " .. tostring(core.server) .. " | You: " .. (C.slot == 1 and "north" or "south"),2)
         end
-        line("Hold RMB: aim | LMB: serve / swing | J/K: backup",3)
+        line(core.phase=="rally" and "Cursor: aim | LMB: swing | Release RMB to run"
+            or "Hold RMB + LMB: serve / restart | J/K: backup",3)
         local even = (core.points[1] + core.points[2]) % 2 == 0
         local left = (core.server == 1 and even) or (core.server == 2 and not even)
         local side = left and "west (lower X)" or "east (higher X)"
-        line(court.mode == "wall" and "Ball in secondary hand to restart; return wall rebound."
+        line(court.mode == "wall" and ("Depth " .. tostring(y2-y1) .. " tiles | Hold ball + RMB/LMB to restart.")
             or "Serve near baseline, " .. side .. " half.",4)
         line(tostring(C.waiting and "Waiting for opponent - tennis input disabled" or core.message or ""),5,0.7,0.9,1)
         line("Right-click > Playable Tennis: courts / leave / sync",6)
@@ -336,11 +397,6 @@ function Overlay:render()
 end
 local function tick()
     C.textWasFocused=inputBlocked()
-    if C.overlay then
-        local w,h = getCore():getScreenWidth(),getCore():getScreenHeight()
-        if C.overlay.width ~= w then C.overlay:setWidth(w) end
-        if C.overlay.height ~= h then C.overlay:setHeight(h) end
-    end
     if C.session and now() - C.lastSync > 5000 and now() - (C.receivedAt or 0) > 1500 then sync() end
 end
 local function start()
@@ -348,7 +404,10 @@ local function start()
     if C.overlay then C.overlay:removeFromUIManager() end
     C.session, C.core, C.previousBall, C.draft = nil, nil, nil, nil
     C.retired, C.courts, C.seq, C.revision = {}, {}, 0, -1
-    C.overlay = Overlay:new(0,0,getCore():getScreenWidth(),getCore():getScreenHeight())
+    -- B42 top-level isPointOver occludes lower UI even with consumeMouseEvents=false.
+    -- A zero-area display panel still renders absolute coordinates, but cannot
+    -- cover inventory/context-menu hit tests or redirect their wheel to zoom.
+    C.overlay = Overlay:new(0,0,0,0)
     C.overlay:initialise()
     C.overlay:instantiate()
     C.overlay.background = false

@@ -148,9 +148,13 @@ function S.dispatch(p,command,args)
         s=newSession(c)
         if not s then fail(p,"Server session limit reached."); return end
         local px,py=PTWall.toLocal(c,p:getX(),p:getY())
-        local tx,ty=PTCore.aimTarget(s.core,1,0,true)
-        if not wallPath(c,px,py,tx,ty) then S.sessions[c.id]=nil; fail(p,"The shot path to that wall is obstructed."); return end
-        if not PTCore.serve(s.core,1,px,py,0) then S.sessions[c.id]=nil; fail(p,s.core.message); return end
+        local startAim
+        for _,candidate in ipairs({0,-0.5,0.5,-1,1}) do
+            local tx,ty=PTCore.aimTarget(s.core,1,candidate,true)
+            if wallPath(c,px,py,tx,ty) then startAim=candidate; break end
+        end
+        if startAim==nil then S.sessions[c.id]=nil; fail(p,"All shot paths to this wall are obstructed. Move sideways or select another segment."); return end
+        if not PTCore.serve(s.core,1,px,py,startAim) then S.sessions[c.id]=nil; fail(p,s.core.message); return end
         s.players[1]=p; S.members[who]=s; publish(s); return
     end
     if command=="create" then

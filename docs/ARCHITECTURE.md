@@ -1,40 +1,44 @@
-# Architecture — v0.2.0
+# Architecture — 0.2.2 development snapshot
 
-Goal: player-versus-player tennis and unregistered solo wall practice, no AI. The native server owns gameplay. Local source tests do not constitute a live multiplayer release gate.
+Player-versus-player tennis and solo wall practice, without AI. Version 0.2.2 is retained during testing; this snapshot is not a finalized release. The native server owns gameplay. Tests against source and engine mocks do not establish live multiplayer compatibility.
 
 ## Modules
 
-- PT_Core: pure Lua ballistic state machine, service/rally/scoring, shared aimTarget. Tennis uses world coordinates; free practice uses a cardinal local frame. Real wall extents constrain rebounds and targets; free practice has no imaginary sideline out rule.
-- PT_Wall: selects an actual north/west tile edge from either face (four directions), contiguous 1–9 tiles, starting range 2–8. Transforms world/local coordinates. Loaded floor, real wall/window/door/fence flags and grid traversal reject blocked routes. Diagonal traversal checks both legs and destination edges.
-- PT_Server: sender identity, membership, exact equipment, sequence/rate checks, fixed updates and targeted snapshots. create/join are tennis-only; startWall selects an unregistered wall and immediately serves. Waiting for a second participant never accepts strokes. Every serve/swing requires PlayableTennis.SportsTennisRacket primary; serve/startWall also requires Base.TennisBall secondary. No inventory ball creation or consumption.
-- PT_Client: native RMB aim + world LMB event, J/K backups, court menus, transformed world overlay. A waiting 1v1 session blocks all sports input. Without a session, sports+ball permits direct wall start. A sports racket in primary hand always sets a native attack gate, even outside sessions; base racket never triggers sports inputs. This prevents normal input attacks, not arbitrary other-mod direct attacks or an already-running animation.
-- PT_ConvertRacket + PT_RacketMenu: native B42 timed-action complete() replaces an owned root-inventory item using sendReplaceItemInContainer, replaceItemInContainer and sendEquip. No client-only inventory mutation. Rechecks ownership/attachment, refuses stale/duplicate completion, preserves condition, repair count, custom state/modData and hands.
-- PT_Items: distinct base:normal sports item references the vanilla TennisRacket icon/model/weight. A Normal item is not a HandWeapon. Blood accessors on Normal are no-ops, so PT_WeaponBlood modData temporarily preserves weapon blood and is removed on reverse conversion. No copied assets or vanilla definition overrides.
+- **PT_Core:** pure Lua ballistic state, serve/rally/scoring and aim targets. Tennis uses world coordinates and a rectangular court. Free practice uses a cardinal local frame, real wall extents and a flared player area.
+- **PT_Wall:** selects an actual north/west tile edge from either face, covering all four directions. It gathers 1–9 continuous solid wall tiles. Starting depth is 1–14 tiles perpendicular to the wall, not diagonal distance. Cursor search and alternative clear routes permit nearby usable segments. Loaded floors, wall/window/door/fence flags and grid traversal reject invalid routes; diagonal traversal checks both legs and destination edges.
+- **PT_Server:** validates sender identity, membership, equipment, sequence/rate limits and session tokens. Only tennis courts are registered; startWall creates a temporary session and serves. Tennis strokes require both participants. Every stroke requires a sports racket in the primary hand; serve/start also requires a tennis ball in the secondary hand. The virtual ball does not create or consume inventory balls.
+- **PT_Client:** RMB+LMB starts/restarts wall practice and serves tennis points. During a rally, cursor aim and LMB work without native aiming stance, retaining ordinary movement/run controls. J/K remain backup controls. Waiting blocks sports input. The sports primary item guards normal combat input even outside sessions. UI-consumed clicks are excluded. A zero-area overlay avoids intercepting native inventory hit tests; the ball renders through OnPostRender.
+- **PT_Swing:** cosmetic, event-free native one-hand clip, about one second at normal speed. Owned actions and maskingright nodes avoid the default surrender fallback and permit moving-arm presentation. No damage events or locomotion block. A running swing is not restarted; another queued action is not interrupted. Visual timing is independent of the 250ms hit-attempt cooldown.
+- **PT_ConvertRacket / PT_RacketMenu:** B42 timed-action complete() replaces an owned root-inventory item using native container/equipment transport. Rechecks ownership/attachment, refuses duplicate completion, preserves condition, repairs, custom state, modData and equipped hands.
+- **PT_Items:** base:normal sports item references the vanilla racket icon/model/weight and hand-mask bindings. It is not a HandWeapon. Since Normal blood accessors are no-ops, PT_WeaponBlood temporarily preserves blood for reverse conversion. No copied game assets or vanilla item overrides.
 
 ## Physics and synchronization
 
-Server fixed update 30Hz, internal ballistic integration 120Hz, complete snapshots 10Hz. Input aim is finite [-1,1]; clients never supply scores, hit outcomes, player positions or ball positions. Session token/revision/monotonic input sequence reject stale packets. Client interpolates continuous snapshots, snaps across strokes/bounces and freezes stale input. Long server stalls replay the point. There is no historical rewind/latency compensation yet.
+Server fixed update is 30Hz, ballistic integration 120Hz, snapshots 10Hz. Aim is finite [-1,1]; clients do not supply scores, hit outcomes, player positions or ball positions. Session/revision/sequence checks reject stale input. Display samples interpolate, following the wall contact path across a rebound instead of cutting directly between equal-distance endpoints. Rendering stops at the last sample if packets stop. Stale input is blocked and long server stalls replay the point. Historical rewind/latency compensation is not implemented.
 
-Free wall practice uses a temporary frame anchored on the chosen wall, not a registered court. Initial/selected shot routes and each moving-ball step are checked against loaded floor/obstacles. Original wall extents are revalidated periodically. Full 3D ceiling/occlusion/dynamic actor collision is not implemented. Tennis remains north–south rectangle registration with a virtual net, first-to-N games, no sets/tiebreak/end change.
+Free practice has fixed depth14. Its player area expands linearly to four additional tiles on each side at the back; actual reflecting wall extents do not expand. Reflection reverses wall-normal velocity while preserving tangent velocity and the gravity trajectory. No hitter-distance landing correction remains. Initial shots and moving-ball routes are checked for loaded floors/obstacles, and original wall extents are periodically revalidated. Ceiling/3D occlusion and dynamic actor collision are not simulated.
+
+Tennis remains a north–south rectangle with a virtual net, conventional point/deuce scoring and first-to-N games. It has no sets, tiebreaks or change of ends. Both modes share controls and cosmetic swing. The wall trapezoid is not applied to tennis.
 
 ## Persistence and compatibility
 
-ModData PlayableTennis_v1 owns registered tennis courts and wallBest records per username. Temporary wall sessions are not persisted or joinable. Active participants/ball/score are never restored after restart. Death, disconnect, vehicle entry, too-far departure, disabled settings or invalid wall closes sessions. Old wall registrations are retained for owner/admin removal but cannot be joined.
+ModData PlayableTennis_v1 stores registered tennis courts and personal wallBest records. Temporary wall sessions and active ball/score/participants are not restored after restart. Death, disconnect, vehicle entry, excessive departure, disabled settings or invalid wall close sessions. Old registered wall courts are retained only for owner/admin removal.
 
-Standalone namespaced Lua, no Java patches or combat overrides. Primary/secondary hands are the game's representation of requested right/left hands. Server and every client require the same version. Native item replacement replication, normal-item held model and real mouse/gameplay interaction still need live confirmation. No split-screen support.
+Standalone namespaced Lua, no Java patches or vanilla method overrides. Existing attacks or another mod's direct attack calls are not cancelled. Server and all clients need identical files; version labels alone cannot distinguish development snapshots. No split-screen support. No custom audio/assets are bundled; the sports item references installed native assets. Latest held appearance, swing blending and remote action/item replication still need live verification.
 
 ## Installed-source evidence
 
-Installed root: C:/Program Files (x86)/Steam/steamapps/common/ProjectZomboid/media. Initial appmanifest build ID: 25485521 (not proof of all historical B42 versions).
+Inspected media root: C:/Program Files (x86)/Steam/steamapps/common/ProjectZomboid/media. Initial appmanifest build ID25485521 is not proof for every historical B42 build.
 
-- Projection: lua/client/Foraging/ISBaseIcon.lua:167–176; screenToIsoX/Y used in server/BuildingObjects/ISMoveableCursor.lua:788–789.
-- Networking: server/ClientCommands.lua:1295–1307, shared/Util/LuaNet.lua:53,113,263.
-- Wall flags/edge ownership: server/BuildingObjects/ISBuildIsoEntity.lua:195; shared/Util/AdjacentFreeTileFinder.lua:4–24.
-- Persistence: server/Foraging/forageServer.lua:26,29.
-- Replacement: shared/TimedActions/ISLitCandleExtinguish.lua complete; shared/TimedActions/ISClothingExtraAction.lua.
-- Racket: scripts/generated/items/weapon.txt:5175–5213. Ball: generated/items/normal.txt:10179–10185.
-- Installed javap: IsoPlayer.updateInternal2 invokes OnPlayerUpdate before UpdateInputState and bannedAttacking checks. UIManager emits OnMouseDown only for unconsumed clicks, and ignores listener return values. InventoryItem blood methods are no-ops; HandWeapon overrides them.
+- Projection: lua/client/Foraging/ISBaseIcon.lua; server/BuildingObjects/ISMoveableCursor.lua.
+- Networking: server/ClientCommands.lua and shared/Util/LuaNet.lua.
+- Wall flags: server/BuildingObjects/ISBuildIsoEntity.lua; shared/Util/AdjacentFreeTileFinder.lua.
+- Persistence: server/Foraging/forageServer.lua.
+- Native replacement: shared/TimedActions/ISLitCandleExtinguish.lua and ISClothingExtraAction.lua.
+- Native racket/ball: scripts/generated/items/weapon.txt and normal.txt.
+- Installed bytecode: OnPlayerUpdate precedes UpdateInputState/bannedAttacking checks; UIManager dispatches OnMouseDown only for unconsumed clicks; Normal blood accessors do not retain blood.
+- Installed animation/action groups: native one-hand clip, actions fallback and movement child tags underpin the owned animation XML. Source inspection does not prove the rendered result.
 
 ## Next evidence gate
 
-Run SP wall practice on all four faces and a two-client dedicated match, including inventory conversion, equipment replication, both-joined activation and packet delay. Then improve animation, localization, key remapping, wider court orientation and bounded lag compensation from measured playtests. No AI branch is planned.
+Follow PLAYTEST.md in SP and a two-client dedicated match. Prior user testing established playable wall rallies on a clear wall, but the latest motion and rendering fixes still require fresh visual and multiplayer evidence. No AI branch is planned.

@@ -6,6 +6,9 @@ local function snapshot(rev,phase,x,session,lastSeq)
 end
 Events.OnGameStart.callback()
 check(PTClient.overlay.mouseEvents==false,'overlay does not consume mouse input')
+check(PTClient.overlay.width==0 and PTClient.overlay.height==0,'display overlay has no native mouse hit area')
+Events.OnTick.callback()
+check(PTClient.overlay.width==0 and PTClient.overlay.height==0,'tick never expands overlay over inventory')
 PTClient.receive('state',snapshot(1,'rally',1,'a',5))
 check(PTClient.seq==5,'resync restores acknowledged sequence')
 PTClient.receive('state',snapshot(1,'rally',99))
@@ -63,7 +66,7 @@ check(PTClient.previousBall==nil,'shot discontinuity discards interpolation')
 check(ClientMock.sound=='TennisRacketHit','accepted new shot emits local feedback')
 local bounce=snapshot(4,'rally',6,'b'); bounce.core.shotId=2; bounce.core.bounces=1
 PTClient.receive('state',bounce)
-check(PTClient.previousBall==nil,'bounce discontinuity discards interpolation')
+check(PTClient.previousBall~=nil,'bounce retains continuous visual interpolation')
 
 local p=ClientMock.player
 local function click() Events.OnMouseDown.callback() end
@@ -150,7 +153,9 @@ for i,f in ipairs(frames) do
     ClientMock.mouseX,ClientMock.mouseY=PTWall.toWorld(s.core.court,0.7,0)
     ClientMock.buttons={[0]=true,[1]=true}; click()
     check(last().command=='swing' and math.abs(last().args.aim-0.5)<0.000001,'cardinal wall mouse aim '..i)
-    PTClient.previousBall=nil; ClientMock.draws={}; PTClient.overlay:render()
+    PTClient.previousBall=nil; ClientMock.draws={}; ClientMock.lines={}; PTClient.overlay:render()
+    local groundX,groundY=PTWall.toWorld(s.core.court,-2,0)
+    check(ClientMock.lines[1].y==groundX*5+groundY*5,'wall baseline stays at ground level '..i)
     local bx,by=PTWall.toWorld(s.core.court,1,10)
     local rendered
     for _,d in ipairs(ClientMock.draws) do if d.w==6 and d.h==6 then rendered=d end end
@@ -166,4 +171,29 @@ PTClient.receive('state',snapshot(1,'ready',nil,'death')); update(); Events.OnPl
 check(not p.banned and not PTClient.session,'death clears guard and session')
 PTClient.receive('state',snapshot(1,'ready',nil,'menu')); update(); Events.OnMainMenuEnter.callback()
 check(not p.banned and not PTClient.session,'main menu clears guard and session')
+-- Each point starts with RMB+LMB; all subsequent returns need only LMB.
+Events.OnGameStart.callback()
+ClientMock.buttons={[0]=true}; before=#ClientMock.sent
+click()
+check(#ClientMock.sent==before,'idle LMB cannot start wall practice')
+for _,mode in ipairs({'wall','tennis'}) do
+    local id='free-movement-'..mode
+    local s=snapshot(1,'ready',nil,id); s.core.court.mode=mode
+    PTClient.receive('state',s); before=#ClientMock.sent; click()
+    check(#ClientMock.sent==before,mode..' ready requires RMB')
+    ClientMock.buttons[1]=true; click()
+    check(last().command=='serve',mode..' RMB LMB starts point')
+    s=snapshot(2,'rally',1,id); s.core.court.mode=mode
+    PTClient.receive('state',s); ClientMock.buttons[1]=nil; before=#ClientMock.sent
+    local beforeMotion=ClientMock.swings or 0
+    click()
+    check(#ClientMock.sent==before+1 and last().command=='swing',mode..' LMB returns without aim stance')
+    check(ClientMock.swings==beforeMotion+1,mode..' uses shared single-handed swing')
+    ClientMock.lines={}; PTClient.overlay:render()
+    check(#ClientMock.lines==(mode=='wall' and 5 or 10),mode..' cursor aim marker visible without RMB')
+    s=snapshot(3,'ready',nil,id); s.core.court.mode=mode
+    PTClient.receive('state',s); before=#ClientMock.sent; click()
+    check(#ClientMock.sent==before,mode..' missed point resets RMB requirement')
+    PTClient.receive('left',{session=id})
+end
 print('PASS client checks: '..checks)

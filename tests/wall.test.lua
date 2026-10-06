@@ -24,6 +24,7 @@ for _,edge in ipairs({"N","W"}) do
         local py=edge=="W" and 10.5 or 10+side*4
         local c,err=PTWall.select(px,py,0,{x=10,y=10,edge=edge},square)
         check(c~=nil,"cardinal face accepts: "..tostring(err))
+        check(c.y2-c.y1==14,"fourteen tile practice depth on every wall face")
         local lx,ly=PTWall.toLocal(c,px,py)
         check(lx==0 and ly==4,"positive local depth for either wall side")
         local wx,wy=PTWall.toWorld(c,lx,ly)
@@ -41,7 +42,7 @@ for _,bad in ipairs({"WindowN","DoorWallN","HoppableN"}) do
 end
 setup("N")
 check(not PTWall.select(10.5,10.5,0,{x=10,y=10,edge="N"},square),"too close")
-check(not PTWall.select(10.5,19,0,{x=10,y=10,edge="N"},square),"too far")
+check(not PTWall.select(10.5,24.1,0,{x=10,y=10,edge="N"},square),"too far")
 check(not PTWall.select(10.5,14,0,{x=10,y=10,z=1,edge="N"},square),"different floor")
 square(10,12,0).flags.collideN=true
 check(not PTWall.select(10.5,14,0,{x=10,y=10,edge="N"},square),"intermediate wall blocks route")
@@ -74,7 +75,7 @@ check(not PTWall.lineClear(10.5,12.5,12.5,12.5,0,square),"west boundary crossing
 check(not PTWall.lineClear(12.5,12.5,10.5,12.5,0,square),"west boundary blocked reverse")
 setup("N")
 c=PTWall.select(10.5,14,0,{x=10,y=10,edge="N"},square)
-check(c.y2==8,"free wall play area includes four tiles behind starting position")
+check(c.y2==14,"free wall play area has fixed fourteen tile depth")
 local ok,message=PTWall.valid({},square)
 check(not ok and type(message)=="string","missing wall reports reason")
 ok,message=PTWall.valid(c,square,10.5,8)
@@ -98,4 +99,45 @@ for _,sx in ipairs({-1,1}) do
         check(not PTWall.lineClear(ax,ay,bx,by,0,square),"destination north leg blocks diagonal")
     end
 end
+-- Facade windows/columns must split a wall, never move practice upstairs.
+setup("N")
+square(11,10,0).flags.WallN=true
+square(12,10,0).flags.WallN=true; square(12,10,0).flags.WindowN=true
+square(9,9,0).flags.WallN=true
+for x=8,14 do square(x,10,1).flags.WallN=true end
+local facade=PTWall.select(10.5,14,0,{x=10,y=10,edge="N"},square)
+check(facade and facade.z==0,"facade practice stays at player floor despite upstairs wall")
+check(facade.wallMaxX-facade.wallMinX==2,"two solid facade tiles stop at window and recessed column")
+setup("N")
+for x=8,13 do square(x,10,0).flags.WallN=true end
+local wide=PTWall.select(10.5,14,0,{x=10,y=10,edge="N"},square)
+check(wide.wallMaxX-wide.wallMinX==6,"six contiguous wall tiles retained")
+for _,distance in ipairs({1,2,8,14}) do
+    local depthCourt=PTWall.select(10.5,10+distance,0,{x=10,y=10,edge="N"},square)
+    check(depthCourt and depthCourt.y2==14,"practice depth independent of starting distance "..distance)
+end
+local trap=PTWall.select(10.5,24,0,{x=10,y=10,edge="N"},square)
+local left,right=PTWall.localBounds(trap,0)
+check(left==trap.x1 and right==trap.x2,"wall end has unchanged baseline width")
+left,right=PTWall.localBounds(trap,7)
+check(left==trap.x1-2 and right==trap.x2+2,"mid depth adds two tiles per side")
+left,right=PTWall.localBounds(trap,14)
+check(left==trap.x1-4 and right==trap.x2+4,"rear adds four tiles per side")
+check(PTWall.containsLocal(trap,right,14,0),"rear corner can return ball")
+check(not PTWall.containsLocal(trap,right+0.01,14,0),"outside trapezoid rejected")
+check(not PTWall.containsLocal(trap,0,14.01,0),"perpendicular depth beyond fourteen rejected")
+check(PTWall.containsLocal(trap,0,14.2,0.3),"caller margin retained")
+check(PTWall.select(14.5,24,0,{x=10,y=10,edge="N"},square)~=nil,"diagonal distance exceeding fourteen is valid at depth fourteen")
+check(not PTWall.select(30,24,0,{x=10,y=10,edge="N"},square),"unbounded lateral acquisition rejected")
+check(PTWall.find(10.5,24,0,10.4,7.1,square)~=nil,"relaxed cursor search finds wall three squares away")
+-- An obstruction on the center route must not hide an open wall endpoint.
+setup("N")
+for x=8,13 do square(x,10,0).flags.WallN=true end
+local openEnd=PTWall.select(13.5,16,0,{x=10,y=10,edge="N"},square)
+check(openEnd~=nil,"wide wall selects from side")
+square(11,12,0).solid=true
+check(not PTWall.lineClear(13.5,16,10.5,10.05,0,square),"fixture blocks center path")
+check(PTWall.valid(openEnd,square,13.5,16),"open endpoint remains usable around center obstruction")
+local blockedEnd,why=PTWall.select(13.5,16,0,{x=10,y=10,edge="N"},square)
+check(blockedEnd~=nil and why==nil,"selection uses open endpoint too")
 print("PASS wall geometry checks: "..checks)

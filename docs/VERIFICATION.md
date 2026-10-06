@@ -1,16 +1,28 @@
-# Verification — v0.2.0, 2026-10-07
+# Verification — 0.2.2 development snapshot, 2026-10-07
 
-Fresh installed-game Kahlua verification:
+Version 0.2.2 is retained during user testing. No release/tag or Workshop publication is implied by this snapshot.
 
-- Core: 218 behavioral assertions.
-- Wall geometry: 66 (four faces, single wall segment, ray traversal, blocked diagonals, unloaded floor).
-- Server: 150 (both-joined activation, sports-only racket, secondary-hand ball, temporary wall sessions, authority, sequences, obstacles, lifecycle, personal best).
-- Client: 60 (waiting input gating, equipment exclusivity, mouse wall start, four transformed frames, native attack guard and cleanup, stale sessions/focus).
-- Inventory conversion: 29 (roundtrip state, native-aware Normal blood no-op, ownership, replay, hands and replacement).
-- **Total: 523 assertions.** All six production Lua modules compile; EN/KO setting/item/menu keys match; non-weapon type and native appearance contracts pass; PowerShell parses.
+## Automated evidence
 
-Independent review found Normal items cannot store HandWeapon blood via its getters/setters. Fixed with a namespaced temporary field and native-aware mock regression. Integration review found no further concrete blocker.
+The current suite passes **848 assertions** in the installed game's Kahlua VM, covering physics/scoring, wall selection and geometry, server authority/lifecycle, client controls, per-frame rendering, cosmetic swing and inventory conversion. Seven production Lua modules compile. EN/KO keys, non-weapon item/native-model bindings, both animation nodes and PowerShell syntax pass their contracts.
 
-Package and local installation are verified separately by file hashes. No Workshop upload, remote repository creation, existing preset edit or save edit. Runtime package has 16 files including common marker, native item definition, translations and six Lua modules.
+A separate installed-engine UI regression reproduces the former fullscreen-overlay hit-test failure and verifies the zero-area overlay used now. These checks include engine mocks and inspected native behavior; they are not live gameplay or a two-client test.
 
-Unverified: actual item definition load/held appearance, native timed-action transport and equipment replication across two clients, actual UI aim/coordinates, combat suppression in live gameplay, hosted/dedicated networking, disk save reload, custom wall tile variants. Source/mocks and inspected installed bytecode are not live-game evidence. Follow PLAYTEST.md before release claims.
+Source/stage/local installation were checked separately by hashes for **19 runtime files**. Installation does not prove an already-running game has reloaded them. Public GitHub source registration is separate from a Workshop release.
+
+## Current behavior covered
+
+- Sports/weapon racket separation, native replacement and state preservation, including Normal-item blood storage via namespaced modData.
+- RMB+LMB start/restart/serve, then free movement and cursor/LMB rally controls in both modes; waiting 1v1 input remains blocked.
+- Perpendicular wall start depth1–14, four wall faces, continuous segments, alternative clear routes and retained obstacle/material checks.
+- Fixed wall depth14 and flared player area; actual wall reflection bounds remain unchanged. Tennis remains rectangular.
+- Natural wall-normal velocity reflection without landing-distance retargeting; contact-path display interpolation avoids stationary-looking symmetric samples.
+- One-second event-free one-hand animation nodes, including explicit actions matching to avoid the native surrender fallback. Existing swings finish and unrelated queued actions are not interrupted.
+
+## Live evidence and remaining gaps
+
+The user reported playable solo rallies on a clear six-tile wall in an earlier snapshot. They also reported incorrect/absent motion and a brief visual pause at reflection, which motivated the latest changes. That earlier gameplay report does not validate the latest corrections.
+
+Still pending: latest held racket appearance and one-hand motion while standing/running; rebound smoothness at multiple zooms; custom map wall acquisition; inventory replacement and remote animation replication between two clients; dedicated/hosted gameplay, latency behavior and disk save/reload. Follow PLAYTEST.md before making release claims. Source tests and package hashes do not close these gaps.
+
+A previously investigated IsoTree.isPlayerInsideARoom null-room rendering error is outside this mod's patches; no engine, map or save fix is included.

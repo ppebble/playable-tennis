@@ -9,5 +9,7 @@ module PlayableTennis
         ConditionMax = 4,
         StaticModel = TennisRacket,
         WorldStaticModel = TennisRacket,
+        PrimaryAnimMask = PT_TennisRacket,
+        SecondaryAnimMask = PT_TennisRacket,
     }
 }

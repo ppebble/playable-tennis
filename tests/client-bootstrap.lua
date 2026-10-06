@@ -1,5 +1,6 @@
 function require() end
 ClientMock = {time=10000,sent={},focused=false,draws={},buttons={}}
+PTSwing={play=function() ClientMock.swings=(ClientMock.swings or 0)+1 end}
 function getSoundManager() return {playUISound=function(_,name) ClientMock.sound=name end} end
 function getTimestampMs() return ClientMock.time end
 function isClient() return true end

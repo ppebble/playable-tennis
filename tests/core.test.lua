@@ -224,3 +224,46 @@ check(PTCore.aimTarget({}, 1, 0, true) == nil, "preview rejects absent court")
 check(PTCore.aimTarget(new(), 3, 0, true) == nil, "preview rejects invalid slot")
 check(PTCore.aimTarget(new(), 1, nil, true) == nil, "preview rejects absent aim")
 check(PTCore.aimTarget(new(), 1, 0, nil) == nil, "preview requires serving boolean")
+
+-- Wall contact preserves speed and gravity instead of choosing a new landing.
+-- Side positions intentionally make diagonal travel exceed fourteen tiles.
+local practice = {mode="wall",freeWall=true,x1=-2,x2=2,y1=0,y2=14,z=0,wallMinX=-0.5,wallMaxX=0.5}
+local function checkWallReflection(state)
+    for i=1,1600 do
+        local before=PTCore.snapshot(state).ball
+        PTCore.step(state,1/120)
+        if not state.ball then return false end
+        if state.wallReady then
+            local ball,dt=state.ball,1/120
+            check(near(ball.vx,before.vx),"wall preserves lateral velocity")
+            check(near(ball.vy,-before.vy),"wall reverses normal velocity without slowing")
+            check(near(ball.vz,before.vz-9.8*dt),"wall preserves vertical velocity under gravity")
+            check(near(ball.x,before.x+before.vx*dt),"lateral trajectory stays continuous at impact")
+            check(near(ball.y,2*state.court.y1-before.y-before.vy*dt),"reflection consumes remaining substep without pause")
+            check(near(ball.z,before.z+before.vz*dt-0.5*9.8*dt*dt),"vertical trajectory stays continuous at impact")
+            return true
+        end
+    end
+    return false
+end
+for _,speed in ipairs({5,9,14}) do
+    for _,depth in ipairs({2,6,12,13,14}) do
+        for _,side in ipairs({-1,1}) do
+            local lo,hi=PTWall.localBounds(practice,depth)
+            local px=side<0 and lo+0.15 or hi-0.15
+            local state=PTCore.new(practice,{ballSpeed=speed})
+            check(PTCore.serve(state,1,px,depth,-side),"serve accepts trapezoid side position without diagonal depth cap")
+            check(checkWallReflection(state),"side serve reaches wall with continuous physical reflection")
+        end
+    end
+end
+local sideReturn=PTCore.new(practice)
+sideReturn.phase,sideReturn.wallReady,sideReturn.clock="rally",true,2
+sideReturn.ball={x=5.4,y=13.2,z=1.4,vx=0,vy=1,vz=0}
+check(PTCore.swing(sideReturn,1,5.8,14,-1),"side ball can be returned at far trapezoid edge")
+check(checkWallReflection(sideReturn),"diagonal swing from fourteen reflects without retargeting")
+local outside=PTCore.new(practice)
+check(not PTCore.serve(outside,1,0,14.01,0),"serve cannot extend normal depth past fourteen")
+outside.phase,outside.wallReady,outside.clock="rally",true,2
+outside.ball={x=6.4,y=14,z=1,vx=0,vy=1,vz=0}
+check(not PTCore.swing(outside,1,6.4,14,0),"swing outside trapezoid is rejected")

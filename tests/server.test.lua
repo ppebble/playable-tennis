@@ -273,5 +273,13 @@ check(s.core.bestRally==7,"free practice record follows the player without regis
 S.tick(); M.square(100,103,0).solid=true
 M.time=M.time+100; S.tick()
 check(s.core.phase=="ready" and not s.core.ball,"authoritative practice trajectory stops at a new solid obstacle")
+M.reset(); a=M.player("alpha",100.5,104)
+M.square(100,102,0).solid=true
+id,s=startWall(a)
+check(s and s.core.phase=="rally","wall start chooses clear side target when centre route blocked")
+M.reset(); a=M.player("alpha",105,114)
+for offset=-4,4 do M.square(100+offset,100,0).flags.WallN=true end
+command(a,"startWall",{x=100,y=100,edge="N"})
+check(S.members.alpha and S.members.alpha.core.phase=="rally","server starts diagonal practice at perpendicular depth fourteen")
 checks=(checks or 0)+count
 print("SERVER PASS: "..count.." behavioral checks")
