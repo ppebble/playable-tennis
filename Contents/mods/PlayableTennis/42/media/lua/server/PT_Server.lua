@@ -155,7 +155,7 @@ function S.dispatch(p,command,args)
     local slot=s.players[1]==p and 1 or 2
     if not integer(args.seq,1,2147483647) or args.seq<=(s.seq[slot] or 0) then return end
     s.seq[slot]=args.seq
-    if not integer(args.aim,-1,1) then fail(p,"Invalid aim."); return end
+    if type(args.aim)~="number" or args.aim~=args.aim or args.aim < -1 or args.aim > 1 then fail(p,"Invalid aim."); return end
     if s.core.court.mode=="tennis" and not (s.players[1] and s.players[2]) then fail(p,"Waiting for a second player."); publish(s); return end
     if not near(p,s.core.court,2) or p:getVehicle() then fail(p,"Stay on the court, alive and on foot."); return end
     local racket=p:getPrimaryHandItem()

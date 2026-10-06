@@ -1,6 +1,7 @@
 -- Owned prototype UI. The server alone decides contact, movement and scores.
 require "ISUI/ISPanel"
 require "ISUI/ISContextMenu"
+require "PT_Core"
 
 PTClient = { courts = {}, seq = 0, revision = -1, retired = {}, lastSync = 0 }
 local C = PTClient
@@ -10,6 +11,34 @@ local function notice(message)
     C.messageUntil = now() + 7000
 end
 local function player() return getSpecificPlayer(0) end
+local function mouseEligible(p)
+    if not p or not C.session or not C.core or C.core.phase=="finished" then return false end
+    if p:isDead() or p:getVehicle() then return false end
+    local c=C.core.court
+    if p:getZ()~=c.z or p:getX()<c.x1-2 or p:getX()>c.x2+2 or p:getY()<c.y1-2 or p:getY()>c.y2+2 then return false end
+    local item=p:getPrimaryHandItem()
+    return item and item:getFullType()=="Base.TennisRacket" and item:getCondition()>0
+end
+local function releaseGuard(force)
+    local guard=C.attackGuard
+    if guard and (force or (not isMouseButtonDown(0) and not isMouseButtonDown(1))) then
+        guard.player:setBannedAttacking(guard.previous)
+        C.attackGuard=nil
+    end
+end
+local function updateGuard(p)
+    if C.attackGuard and C.attackGuard.player~=p then releaseGuard(true) end
+    if mouseEligible(p) and isMouseButtonDown(1) then
+        if not C.attackGuard then C.attackGuard={player=p,previous=p:isBannedAttacking()} end
+        p:setBannedAttacking(true)
+    elseif C.attackGuard then
+        -- Drain a held click before restoring combat, so ending/leaving a match
+        -- cannot turn the same tennis click into a delayed vanilla attack.
+        if not p or p:isDead() then releaseGuard(true)
+        else releaseGuard(false) end
+        if C.attackGuard then C.attackGuard.player:setBannedAttacking(true) end
+    end
+end
 local function send(command, args)
     local p = player()
     if not p then return end
@@ -29,6 +58,7 @@ end
 local function leave()
     if C.session then C.retired[C.session] = true end
     C.session, C.core, C.previousBall = nil, nil, nil
+    releaseGuard(false)
     C.joinPending = false
     send("leave", {})
 end
@@ -47,6 +77,7 @@ function C.receive(command, args)
         if args.session and C.session and args.session ~= C.session then return end
         if C.session then C.retired[C.session] = true end
         C.session, C.core, C.previousBall = nil, nil, nil
+        releaseGuard(false)
         C.joinPending = false
         notice(args.message or "Left court.")
     elseif command == "state" and args.core and args.session then
@@ -85,7 +116,23 @@ local function aim()
     if isKeyDown(Keyboard.KEY_RIGHT) then return 1 end
     return 0
 end
-local function input(command)
+local function mouseAim()
+    local c=C.core.court
+    local x=screenToIsoX(0,getMouseX(),getMouseY(),c.z)
+    local width=c.x2-c.x1
+    local base,scale=(c.x1+c.x2)/2,width*0.3
+    if C.core.phase=="ready" then
+        if c.mode=="wall" then scale=width*0.18
+        else
+            local even=(C.core.points[1]+C.core.points[2])%2==0
+            local left=(C.core.server==1 and even) or (C.core.server==2 and not even)
+            base=base+(left and 1 or -1)*width*0.25
+            scale=width*0.1
+        end
+    end
+    return math.max(-1,math.min(1,(x-base)/scale))
+end
+local function input(command,selectedAim)
     if not C.session or inputBlocked() then return end
     if now() - (C.receivedAt or 0) > 3000 then
         notice("Waiting for server state; syncing...")
@@ -94,7 +141,15 @@ local function input(command)
     end
     C.seq = C.seq + 1
     C.flashUntil = now() + 180
-    send(command, { aim = aim(), seq = C.seq, session = C.session })
+    send(command, { aim = selectedAim or aim(), seq = C.seq, session = C.session })
+end
+local function mouseDown()
+    local p=player()
+    -- This event is emitted only for a world click unconsumed by other UI.
+    -- Its return value does not cancel combat: OnPlayerUpdate applies the gate.
+    if not mouseEligible(p) or not isMouseButtonDown(1) or inputBlocked() or C.textWasFocused then return end
+    updateGuard(p)
+    input(C.core.phase=="ready" and "serve" or "swing",mouseAim())
 end
 local function keyPressed(key)
     if key == Keyboard.KEY_J then input("swing") end
@@ -189,6 +244,14 @@ function Overlay:render()
             else
                 self:worldLine(x1,y1,x2,y1,z+0.4,0.3,0.8,1)
             end
+            if mouseEligible(player()) and isMouseButtonDown(1) and not inputBlocked() then
+                local tx,ty=PTCore.aimTarget(core,C.slot,mouseAim(),core.phase=="ready")
+                if tx then
+                    local sx,sy=project(tx,ty,z)
+                    self:drawLine2(sx-7,sy,sx+7,sy,1,0.2,1,0.5)
+                    self:drawLine2(sx,sy-5,sx,sy+5,1,0.2,1,0.5)
+                end
+            end
             local ball = core.ball
             if ball then
                 local bx,by,bz = ball.x,ball.y,ball.z
@@ -216,7 +279,7 @@ function Overlay:render()
         else
             line("Server: slot " .. tostring(core.server) .. " | You: " .. (C.slot == 1 and "north" or "south"),2)
         end
-        line("J swing | K serve | Hold left/right arrow to aim",3)
+        line("Hold RMB: aim | LMB: serve / swing | J/K: backup",3)
         local even = (core.points[1] + core.points[2]) % 2 == 0
         local left = (core.server == 1 and even) or (core.server == 2 and not even)
         local side = left and "west (lower X)" or "east (higher X)"
@@ -234,6 +297,7 @@ function Overlay:render()
     end
 end
 local function tick()
+    C.textWasFocused=inputBlocked()
     if C.overlay then
         local w,h = getCore():getScreenWidth(),getCore():getScreenHeight()
         if C.overlay.width ~= w then C.overlay:setWidth(w) end
@@ -242,6 +306,7 @@ local function tick()
     if C.session and now() - C.lastSync > 5000 and now() - (C.receivedAt or 0) > 1500 then sync() end
 end
 local function start()
+    releaseGuard(true)
     if C.overlay then C.overlay:removeFromUIManager() end
     C.session, C.core, C.previousBall, C.draft = nil, nil, nil, nil
     C.retired, C.courts, C.seq, C.revision = {}, {}, 0, -1
@@ -253,10 +318,22 @@ local function start()
     C.overlay:addToUIManager()
     sync()
 end
+local function stop()
+    releaseGuard(true)
+    if C.session then C.retired[C.session]=true end
+    C.session,C.core,C.previousBall=nil,nil,nil
+    if C.overlay then C.overlay:removeFromUIManager(); C.overlay=nil end
+end
 Events.OnServerCommand.Add(function(module,command,args)
     if module == "PlayableTennis" then C.receive(command,args) end
 end)
 Events.OnFillWorldObjectContextMenu.Add(contextMenu)
 Events.OnKeyPressed.Add(keyPressed)
+Events.OnMouseDown.Add(mouseDown)
+-- Installed updateInternal2 invokes this before reading input / attack gates.
+Events.OnPlayerUpdate.Add(function(p) if p==player() then updateGuard(p) end end)
+Events.OnPlayerDeath.Add(function(p) if p==player() or (C.attackGuard and C.attackGuard.player==p) then stop() end end)
+Events.OnDisconnect.Add(stop)
+Events.OnMainMenuEnter.Add(stop)
 Events.OnGameStart.Add(start)
 Events.OnTick.Add(tick)

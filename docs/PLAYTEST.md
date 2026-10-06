@@ -6,7 +6,8 @@ Use a disposable test world/profile. Keep source tests, local hashes, SP, hosted
 
 - Enable PlayableTennis, equip vanilla racket, carry tennis ball. Register a clear outdoor 8×18 rectangle with continuous north wall. Check invalid window/door/fence/hole refusal.
 - Join and verify projected corner lines align with selected world tiles at different zoom levels/resolutions. HUD must not consume mouse movement/clicks.
-- K from south baseline starts a visible ball. Move into range and press J after wall rebound; perform 10 returns using three aim choices. Check sound occurs once per accepted shot, no combat/damage and no item duplication.
+- Hold RMB from the south baseline and move the cursor to position the green target; LMB starts a visible ball. Move into range and RMB+LMB after wall rebound; perform 10 returns with intermediate aim positions. Verify J/K backups. Check sound occurs once per accepted shot, no combat/damage and no item duplication.
+- Before joining, use the racket as a normal weapon. After joining, verify HUD and RMB+LMB sports input during waiting/ready/rally. Leave while buttons remain down: no delayed combat attack; release both, then verify normal racket attacks work. Repeat with match end, equipment change, death, disconnect and menu exit; preserve any attack restriction that existed before tennis.
 - Early/missed J consumes cooldown; high/low/out-of-reach ball is rejected. Two ground bounces reset rally. Leave/rejoin preserves best; save/quit/load preserves court and best but no active ball.
 - Destroy part of wall, leave chunk, enter vehicle, die: clean session shutdown, no console error. Verify typed J/K in chat/text fields does not swing.
 

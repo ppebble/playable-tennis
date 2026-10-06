@@ -13,7 +13,7 @@ local function reject(s, message) s.message = message; return false end
 local function midX(s) return (s.court.x1 + s.court.x2) / 2 end
 local function midY(s) return (s.court.y1 + s.court.y2) / 2 end
 local function validSlot(slot) return slot == 1 or slot == 2 end
-local function validAim(aim) return aim == -1 or aim == 0 or aim == 1 end
+local function validAim(aim) return finite(aim) and aim >= -1 and aim <= 1 end
 local function inside(s, x, y)
     local c = s.court
     return x >= c.x1 and x <= c.x2 and y >= c.y1 and y <= c.y2
@@ -149,6 +149,27 @@ function PTCore.new(court, options)
         clock = 0, accumulator = 0, lastSwing = {-100, -100},
         message = "Ready. Serve from your baseline and the indicated service side."}
 end
+-- Shared target calculation for authoritative shots and client aim previews.
+function PTCore.aimTarget(s, slot, aim, serving)
+    if type(s) ~= "table" or type(s.court) ~= "table" or not validSlot(slot)
+        or not validAim(aim) or type(serving) ~= "boolean" then return nil end
+    local c = s.court
+    if not finite(c.x1) or not finite(c.x2) or not finite(c.y1) or not finite(c.y2)
+        or c.x2 <= c.x1 or c.y2 <= c.y1 or (c.mode ~= "wall" and c.mode ~= "tennis") then return nil end
+    local width, length = c.x2 - c.x1, c.y2 - c.y1
+    if c.mode == "wall" then
+        return midX(s) + aim * width * (serving and 0.18 or 0.3), c.y1
+    end
+    if serving then
+        if type(s.points) ~= "table" or not finite(s.points[1]) or not finite(s.points[2]) then return nil end
+        local even = (s.points[1] + s.points[2]) % 2 == 0
+        local fromLeft = (slot == 1 and even) or (slot == 2 and not even)
+        return midX(s) + (fromLeft and 1 or -1) * width * 0.25 + aim * width * 0.1,
+            midY(s) + (slot == 1 and 1 or -1) * length * 0.16
+    end
+    return midX(s) + aim * width * 0.3,
+        midY(s) + (slot == 1 and 1 or -1) * length * 0.32
+end
 function PTCore.serve(s, slot, px, py, aim)
     if not validSlot(slot) or not finite(px) or not finite(py) or not validAim(aim) then return reject(s, "Invalid serve input.") end
     if s.phase ~= "ready" then return reject(s, "Wait until ready to serve.") end
@@ -163,14 +184,7 @@ function PTCore.serve(s, slot, px, py, aim)
     if not wall and ((fromLeft and px >= midX(s) - 0.1) or (not fromLeft and px <= midX(s) + 0.1)) then
         return reject(s, fromLeft and "Serve from the left half of your baseline." or "Serve from the right half of your baseline.")
     end
-    local width, length = c.x2 - c.x1, c.y2 - c.y1
-    local tx, ty
-    if wall then
-        tx, ty = midX(s) + aim * width * 0.18, c.y1
-    else
-        tx = midX(s) + (fromLeft and 1 or -1) * width * 0.25 + aim * width * 0.1
-        ty = midY(s) + (slot == 1 and 1 or -1) * length * 0.16
-    end
+    local tx, ty = PTCore.aimTarget(s, slot, aim, true)
     launch(s, px, baseline + ((wall or slot == 2) and -0.1 or 0.1), 1.4, tx, ty, wall)
     s.phase, s.lastHit, s.bounces = "rally", slot, 0
     s.servicePending, s.serveFromLeft, s.wallReady = not wall, fromLeft, false
@@ -196,9 +210,7 @@ function PTCore.swing(s, slot, px, py, aim)
     if b.z < 0.15 or b.z > 2.4 then return reject(s, "Ball is outside racket height (0.15 to 2.4).") end
     if (px - b.x) ^ 2 + (py - b.y) ^ 2 > s.options.hitRadius ^ 2 then return reject(s, "Ball is out of reach.") end
     if px < c.x1 - 2 or px > c.x2 + 2 or py < c.y1 - 2 or py > c.y2 + 2 then return reject(s, "Return to the court.") end
-    local width, length = c.x2 - c.x1, c.y2 - c.y1
-    local tx = midX(s) + aim * width * 0.3
-    local ty = wall and c.y1 or (midY(s) + (slot == 1 and 1 or -1) * length * 0.32)
+    local tx, ty = PTCore.aimTarget(s, slot, aim, false)
     launch(s, b.x, b.y, b.z, tx, ty, wall)
     s.lastHit, s.bounces, s.wallReady = slot, 0, false
     s.lastSwing[slot] = s.clock

@@ -20,7 +20,7 @@ check(s.shotId == 0, "new session has no accepted shots")
 check(not PTCore.serve(s, 2, 6, 18, 0), "only server may serve")
 check(not PTCore.serve(s, 1, 6, 0, 0), "deuce baseline side enforced")
 check(not PTCore.serve(s, 1, 2, 4, 0), "baseline distance enforced")
-check(not PTCore.serve(s, 1, 2, 0, 2), "aim must be discrete")
+check(not PTCore.serve(s, 1, 2, 0, 2), "aim must be within normalized range")
 check(PTCore.serve(s, 1, 2, 0, 0), "legal north serve")
 check(s.shotId == 1, "accepted serve advances shot sequence")
 check(not PTCore.serve(s, 1, 2, 0, 0), "cannot serve twice")
@@ -145,3 +145,61 @@ PTCore.step(a, -1); PTCore.step(a, 0 / 0); PTCore.step(a, math.huge)
 check(a.clock == before, "invalid dt ignored")
 PTCore.step(a, 1000)
 check(a.clock - before < 0.251, "stall catch-up bounded")
+
+local function near(actual, expected) return math.abs(actual - expected) < 0.000001 end
+for _, mode in ipairs({"tennis", "wall"}) do
+    for _, slot in ipairs({1, 2}) do
+        for _, serving in ipairs({true, false}) do
+            for _, aim in ipairs({-1, -0.37, 0, 0.62, 1}) do
+                local targetState = new()
+                targetState.court.mode = mode
+                local tx, ty = PTCore.aimTarget(targetState, slot, aim, serving)
+                local expectedX, expectedY
+                if mode == "wall" then
+                    expectedX, expectedY = 4 + aim * 8 * (serving and 0.18 or 0.3), 0
+                elseif serving then
+                    expectedX = 4 + (slot == 1 and 1 or -1) * 2 + aim * 0.8
+                    expectedY = 9 + (slot == 1 and 1 or -1) * 18 * 0.16
+                else
+                    expectedX = 4 + aim * 2.4
+                    expectedY = 9 + (slot == 1 and 1 or -1) * 18 * 0.32
+                end
+                check(near(tx, expectedX) and near(ty, expectedY), "shared preview preserves serve/wall/rally target formulas")
+            end
+        end
+    end
+end
+for _, slot in ipairs({1, 2}) do
+    for _, odd in ipairs({false, true}) do
+        for _, aim in ipairs({-0.83, 0.24, 0.77}) do
+            local fractional = new()
+            fractional.server = slot
+            fractional.points[1] = odd and 1 or 0
+            local fromLeft = (slot == 1 and not odd) or (slot == 2 and odd)
+            local tx, ty = PTCore.aimTarget(fractional, slot, aim, true)
+            check((fromLeft and tx > 4 or not fromLeft and tx < 4)
+                and math.abs(ty - 9) < 4.5, "fractional aim target stays in diagonal service box")
+            check(PTCore.serve(fractional, slot, fromLeft and 2 or 6, slot == 1 and 0 or 18, aim), "fractional serve accepted")
+            local bounced = false
+            for i = 1, 1000 do
+                PTCore.step(fractional, 1 / 120)
+                if fractional.ball and not fractional.servicePending then bounced = true; break end
+                if fractional.phase ~= "rally" then break end
+            end
+            check(bounced, "fractional serve physically lands legally")
+            advance(fractional, 0.08)
+            check(PTCore.swing(fractional, 3 - slot, fractional.ball.x, fractional.ball.y, aim), "fractional return accepted")
+        end
+    end
+end
+for _, bad in ipairs({0 / 0, math.huge, -math.huge, "0", -1.01, 1.01, false}) do
+    local invalid = new()
+    check(PTCore.aimTarget(invalid, 1, bad, true) == nil, "preview rejects invalid normalized aim")
+    check(not PTCore.serve(invalid, 1, 2, 0, bad), "serve rejects invalid normalized aim")
+    check(not PTCore.swing(invalid, 1, 2, 0, bad), "swing rejects invalid normalized aim")
+end
+check(PTCore.aimTarget(nil, 1, 0, true) == nil, "preview rejects absent state")
+check(PTCore.aimTarget({}, 1, 0, true) == nil, "preview rejects absent court")
+check(PTCore.aimTarget(new(), 3, 0, true) == nil, "preview rejects invalid slot")
+check(PTCore.aimTarget(new(), 1, nil, true) == nil, "preview rejects absent aim")
+check(PTCore.aimTarget(new(), 1, 0, nil) == nil, "preview requires serving boolean")

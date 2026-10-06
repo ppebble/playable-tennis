@@ -18,7 +18,7 @@ try {
 if ($LASTEXITCODE -ne 0) { throw 'Core tests failed' }
 & $java -cp $cp LuaHarness (Join-Path $repo 'tests/server-bootstrap.lua') $core (Join-Path $mod 'media/lua/server/PT_Server.lua') (Join-Path $repo 'tests/server.test.lua')
 if ($LASTEXITCODE -ne 0) { throw 'Server tests failed' }
-& $java -cp $cp LuaHarness (Join-Path $repo 'tests/client-bootstrap.lua') (Join-Path $mod 'media/lua/client/PT_Client.lua') (Join-Path $repo 'tests/client.test.lua')
+& $java -cp $cp LuaHarness (Join-Path $repo 'tests/client-bootstrap.lua') $core (Join-Path $mod 'media/lua/client/PT_Client.lua') (Join-Path $repo 'tests/client.test.lua')
 if ($LASTEXITCODE -ne 0) { throw 'Client tests failed' }
 $lua = @(Get-ChildItem (Join-Path $mod 'media/lua') -Recurse -Filter '*.lua' | ForEach-Object FullName)
 & $java '-DcompileOnly=true' -cp $cp LuaHarness @lua

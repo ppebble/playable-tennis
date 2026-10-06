@@ -188,5 +188,18 @@ check(S.members.alpha==s,"single player online audit recognizes local player")
 command(a,"leave",{})
 check(delivered[#delivered].command=="left" and not S.members.alpha,"single player close uses direct client bridge")
 isServer=originalIsServer; PTClient=nil
+a,id,s=setup("tennis")
+b=M.player("beta",106,120); command(b,"join",{id=id})
+input(a,s,1,{aim=0.375})
+check(s.core.phase=="rally" and s.core.shotId==1,"multiplayer accepts fractional mouse serve aim")
+local seq=2
+for _,bad in ipairs({0/0,math.huge,-math.huge,"0.5",{},1.001,-1.001}) do
+    input(a,s,seq,{aim=bad}); seq=seq+1
+    check(last().command=="error" and s.core.shotId==1,"malformed mouse aim rejected without a new shot")
+end
+s.core.ball={x=106,y=119,z=1,vx=0,vy=1,vz=0}
+s.core.servicePending=false; s.core.bounces=1
+command(b,"swing",{session=s.id,seq=1,aim=-0.625})
+check(s.core.lastHit==2 and s.core.shotId==2,"multiplayer accepts fractional mouse return aim")
 checks=(checks or 0)+count
 print("SERVER PASS: "..count.." behavioral checks")

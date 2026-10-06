@@ -1,22 +1,35 @@
 function require() end
-ClientMock = {time=10000,sent={},focused=false,draws={}}
+ClientMock = {time=10000,sent={},focused=false,draws={},buttons={}}
 function getSoundManager() return {playUISound=function(_,name) ClientMock.sound=name end} end
 function getTimestampMs() return ClientMock.time end
 function isClient() return true end
 local p={getX=function() return 3 end,getY=function() return 4 end,getZ=function() return 0 end}
+ClientMock.player=p
+function p:isDead() return self.dead or false end
+function p:getVehicle() return self.vehicle end
+function p:isBannedAttacking() return self.banned or false end
+function p:setBannedAttacking(value) self.banned=value end
+function p:getPrimaryHandItem()
+    if self.noRacket then return nil end
+    return {getFullType=function() return "Base.TennisRacket" end,getCondition=function() return 10 end}
+end
 function getSpecificPlayer() return p end
 function sendClientCommand(player,module,command,args)
     ClientMock.sent[#ClientMock.sent+1]={command=command,args=args}
 end
 Keyboard={KEY_J=1,KEY_K=2,KEY_LEFT=3,KEY_RIGHT=4}
 function isKeyDown(key) return ClientMock.key==key end
+function isMouseButtonDown(button) return ClientMock.buttons[button] or false end
+function getMouseX() return ClientMock.mouseX or 4 end
+function getMouseY() return ClientMock.mouseY or 12 end
+function screenToIsoX(_,x,y,z) return x end
 function getCore() return {isDoingTextEntry=function() return ClientMock.focused end,
     getScreenWidth=function() return 1280 end,getScreenHeight=function() return 720 end} end
 UIFont={Small=1}
 function isoToScreenX(_,x,y,z) return x*10-y*10 end
 function isoToScreenY(_,x,y,z) return x*5+y*5-z*30 end
 Events={}
-for _,name in ipairs({'OnServerCommand','OnFillWorldObjectContextMenu','OnKeyPressed','OnGameStart','OnTick'}) do
+for _,name in ipairs({'OnServerCommand','OnFillWorldObjectContextMenu','OnKeyPressed','OnMouseDown','OnPlayerUpdate','OnPlayerDeath','OnDisconnect','OnMainMenuEnter','OnGameStart','OnTick'}) do
     local event={}
     event.Add=function(fn) event.callback=fn end
     Events[name]=event

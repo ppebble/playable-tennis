@@ -12,7 +12,7 @@ The source acceptance gate is deterministic rules, adversarial server commands, 
 |---|---|
 | shared/PT_Core.lua | No game APIs; authoritative state transitions, ballistic integration, hits, score, snapshots |
 | server/PT_Server.lua | Trusted sender/position/equipment validation, court geometry, membership, ticks, targeted snapshots, persistence |
-| client/PT_Client.lua | Court context menu, J/K inputs, aim, projected overlay/HUD, interpolation, stale-state recovery |
+| client/PT_Client.lua | Court context menu, RMB aim/LMB stroke, J/K backups, projected overlay/HUD, interpolation, stale-state recovery |
 | sandbox-options + Translate | Namespaced configuration, EN/KO setting labels |
 | tests + scripts | Installed Kahlua execution, mocks of engine boundary, repeatable packaging and local install |
 
@@ -26,7 +26,7 @@ Court sprite identifiers have not been verified in the installed text sources. A
 
 ## Ball, hits and rules
 
-The virtual ball has world x/y, height z above court floor and vx/vy/vz. Gravity is 9.8 and integration uses 1/120-second substeps. Landing uses interpolated contact location; net and wall crossings use swept plane checks. Game timescale does not accelerate a multiplayer rally. Shot targets are assisted opposite-side landing positions with three lateral choices. A loft adjustment prevents short fast assisted shots always hitting the net. Wall reflection reverses longitudinal velocity; ground reflection damps vertical velocity. This is an arcade prototype, not drag/spin/material simulation.
+The virtual ball has world x/y, height z above court floor and vx/vy/vz. Gravity is 9.8 and integration uses 1/120-second substeps. Landing uses interpolated contact location; net and wall crossings use swept plane checks. Game timescale does not accelerate a multiplayer rally. Shot targets are assisted opposite-side landing positions with bounded continuous lateral mouse aiming (keyboard backups retain three choices). A loft adjustment prevents short fast assisted shots always hitting the net. Wall reflection reverses longitudinal velocity; ground reflection damps vertical velocity. This is an arcade prototype, not drag/spin/material simulation.
 
 Swing requests require player and ball on the correct side, horizontal reach, height, turn ownership, cooldown and valid serve receive timing. A miss consumes cooldown. The server uses its received player position; there is no untrusted client rewind. The 100ms visual interpolation plus network latency makes low-speed play the starting test case. Future lag compensation must keep a bounded server history and constrain accepted rewind by measured connection latency, without accepting claimed client positions.
 
@@ -44,7 +44,7 @@ Server scheduling runs at 30Hz with 10Hz snapshots and 120Hz internal physics. B
 
 Use vanilla `Base.TennisRacket` and `Base.TennisBall`; no third-party assets are copied. Racket model remains visible through normal equipment. Own overlay draws ball/shadow/lines and feedback. Native `TennisRacketHit` is local UI audio, not a world noise event. General combat `DoAttack` is deliberately not used as animation. Next asset step is an owned noncombat animation state with timing events; that requires verifying client/remote animation replication before coupling hit windows to it.
 
-All modules use PT_/PlayableTennis namespaces and add event listeners without overriding vanilla functions. No Java patch, other mod requirement, world item spawning, game speed change, damage, or custom XP. Exact vanilla FullTypes intentionally exclude untested replacement rackets. Keyboard mapping is currently fixed and may overlap other mods; context actions remain available. One local keyboard player per process only. B42.20 is the declared minimum; tested API evidence is from the currently installed build, not every historical B42 build.
+All modules use PT_/PlayableTennis namespaces and add event listeners without overriding vanilla functions. No Java patch, other mod requirement, world item spawning, game speed change, damage, or custom XP. Exact vanilla FullTypes intentionally exclude untested replacement rackets. Mouse input is enabled only after explicit court joining, while holding an intact racket near the court on the same floor and before match completion. Waiting and serve-ready phases are included. Holding RMB applies a scoped native attack gate before input processing; prior state is restored after both buttons release, or immediately on death/disconnect/menu exit. Normal racket weapon use outside this mode is preserved. Already-running attacks and direct combat calls by other mods are outside this input guard. Keyboard backups remain fixed; context actions remain available. One local keyboard player per process only. B42.20 is the declared minimum; tested API evidence is from the currently installed build, not every historical B42 build.
 
 ## Installed evidence (2026-10-07)
 
