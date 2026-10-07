@@ -152,13 +152,30 @@ local function launch(s, x, y, z, tx, ty, wall)
     s.ball = {x = x, y = y, z = z, vx = dx / duration, vy = dy / duration,
         vz = (targetZ - z + 0.5 * GRAVITY * duration * duration) / duration}
 end
+function PTCore.validCourtSize(court)
+    local width,length=court.x2-court.x1,court.y2-court.y1
+    if width>length then width,length=length,width end
+    local limits=PTCore.courtLimits
+    return width>=limits.minWidth and width<=limits.maxWidth and length>=limits.minLength and length<=limits.maxLength
+end
+function PTCore.playCourt(court)
+    local c=copy(court)
+    -- Simulation length is local Y; swap axes for east/west courts while the
+    -- registered rectangle stays in world coordinates. Existing wall frames
+    -- and already-normalized snapshots must not be transformed again.
+    if c.mode=="tennis" and not c.frame and c.x2-c.x1>c.y2-c.y1 and PTCore.validCourtSize(c) then
+        c.x1,c.y1,c.x2,c.y2=c.y1,c.x1,c.y2,c.x2
+        c.frame={originX=0,originY=0,ux=0,uy=1,vx=1,vy=0}
+    end
+    return c
+end
 function PTCore.new(court, options)
     options = options or {}
     local function option(name, default, lo, hi)
         local v = options[name]
         return finite(v) and clamp(v, lo, hi) or default
     end
-    return {court = copy(court), options = {ballSpeed = option("ballSpeed", 9, 5, 14), hitRadius = option("hitRadius", 1.8, 0.75, 3)},
+    return {court = PTCore.playCourt(court), options = {ballSpeed = option("ballSpeed", 9, 5, 14), hitRadius = option("hitRadius", 1.8, 0.75, 3)},
         phase = "ready", server = 1, points = {0, 0}, winner = 0,
         ball = nil, lastHit = 0, shotId = 0, bounces = 0, faults = 0, rally = 0, bestRally = 0,
         clock = 0, accumulator = 0, lastSwing = {-100, -100},
@@ -215,14 +232,16 @@ function PTCore.serve(s, slot, px, py, aim)
         end
     elseif px < c.x1 + 0.2 or px > c.x2 - 0.2 or math.abs(py - baseline) > 1.5 then
         if not wall then
-            return reject(s, "Move to the green serve box at the " .. (slot==1 and "NORTH (lower Y)" or "SOUTH (higher Y)") .. " baseline.")
+            local side=c.frame and (slot==1 and "WEST (lower X)" or "EAST (higher X)") or (slot==1 and "NORTH (lower Y)" or "SOUTH (higher Y)")
+            return reject(s, "Move to the green serve box at the " .. side .. " baseline.")
         end
         return reject(s, "Stand within 1.5 tiles of your baseline, inside the court width.")
     end
     local even = (s.points[1] + s.points[2]) % 2 == 0
     local fromLeft = (slot == 1 and even) or (slot == 2 and not even)
     if not wall and ((fromLeft and px >= midX(s) - 0.1) or (not fromLeft and px <= midX(s) + 0.1)) then
-        return reject(s, fromLeft and "Move into the green serve box: WEST (lower X) half." or "Move into the green serve box: EAST (higher X) half.")
+        local half=c.frame and (fromLeft and "NORTH (lower Y)" or "SOUTH (higher Y)") or (fromLeft and "WEST (lower X)" or "EAST (higher X)")
+        return reject(s, "Move into the green serve box: "..half.." half.")
     end
     local tx, ty = PTCore.aimTarget(s, slot, aim, true)
     s.server = slot

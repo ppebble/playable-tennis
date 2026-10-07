@@ -157,3 +157,38 @@ for _,edge in ipairs({"N","W"}) do
         check(not PTWall.containsLocal(capped,hi+.01,14),"former wider side area is outside practice")
     end
 end
+
+-- Real net tiles are allowed only on the correct central edge. Other fences,
+-- even ones sharing a square with a tennis net, remain obstacles.
+local function addNetObject(sq,name,edge)
+    sq.objects=sq.objects or {}
+    local props={Is=function(_,flag) return flag=="Hoppable"..edge or flag=="collide"..edge end}
+    sq.objects[#sq.objects+1]={getSprite=function() return {getName=function() return name end} end,
+        getProperties=function() return props end}
+    function sq:getObjects() return {size=function() return #self.objects end,get=function(_,i) return self.objects[i+1] end} end
+    sq.flags["Hoppable"..edge]=true; sq.flags["collide"..edge]=true
+end
+for _,edge in ipairs({"N","W"}) do
+    local c={mode="tennis",x1=0,y1=0,x2=edge=="N" and 10 or 18,y2=edge=="N" and 18 or 10,z=0}
+    local first=edge=="N" and 49 or 52
+    for index=first,first+2 do
+        squares={}
+        local x,y=edge=="N" and 5 or 9,edge=="N" and 9 or 5
+        addNetObject(square(x,y,0),"recreational_sports_01_"..index,edge)
+        check(PTWall.validateCourt(c,square),"native net segment allowed on matching center edge")
+        addNetObject(square(x,y,0),"fencing_01_0",edge)
+        check(not PTWall.validateCourt(c,square),"co-located ordinary fence cannot hide behind net exception")
+        squares={}
+        addNetObject(square(x+(edge=="W" and 1 or 0),y+(edge=="N" and 1 or 0),0),"recreational_sports_01_"..index,edge)
+        check(not PTWall.validateCourt(c,square),"off-center tennis net is rejected")
+    end
+    squares={};addNetObject(square(5,5,0),"fencing_01_0",edge)
+    check(not PTWall.validateCourt(c,square),"ordinary low fence remains blocked")
+end
+squares={}
+local framed={mode="tennis",x1=100,y1=200,x2=110,y2=218,z=0,
+    frame={originX=0,originY=0,ux=0,uy=1,vx=1,vy=0}}
+addNetObject(square(209,105,0),"recreational_sports_01_53","W")
+check(PTWall.validateCourt(framed,square),"canonical court validates center net in world coordinates")
+square(208,105,0).solid=true
+check(not PTWall.validateCourt(framed,square),"rotated world solid furniture still blocks court")

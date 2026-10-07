@@ -374,3 +374,27 @@ ClientMock.time=ClientMock.time+10000
 Events.OnTick.callback()
 check(#ClientMock.sent==beforeFinalTick and PTClient.core.winner==1,
     'finished scoreboard remains visible instead of stale auto-sync asking server for released membership')
+PTClient.receive('left',{session=PTClient.session})
+local rotated=snapshot(1,'ready',nil,'east-west-tennis')
+rotated.core=PTCore.new({id='ew',mode='tennis',x1=100,x2=118,y1=200,y2=210,z=0})
+rotated.core.receiverReady=true
+PTClient.receive('state',rotated)
+p.x,p.y=100,202.5
+ClientMock.mouseX,ClientMock.mouseY=110,208
+ClientMock.buttons={[0]=true,[1]=true}; click()
+check(last().command=='serve' and math.abs(last().args.aim-0.5)<0.000001,'east-west mouse aims across local court width')
+labels={}; PTClient.overlay.drawText=function(self,text) labels[#labels+1]=text end
+PTClient.overlay:render()
+local west,half=false,false
+for _,text in ipairs(labels) do
+    if string.find(text,'You: west',1,true) then west=true end
+    if string.find(text,'Green serve box: WEST, north (lower Y)',1,true) then half=true end
+end
+check(west and half,'east-west HUD names the real world baseline and service half')
+rotated.revision=2; rotated.core.phase='rally'; rotated.core.ball={x=202.5,y=109,z=1}
+PTClient.receive('state',rotated)
+ClientMock.draws={}; PTClient.overlay:render()
+local worldBall
+for _,d in ipairs(ClientMock.draws) do if d.w==6 and d.h==6 then worldBall=d end end
+check(worldBall and math.abs(worldBall.x-(109*10-202.5*10-3))<0.000001
+    and math.abs(worldBall.y-(109*5+202.5*5-13))<0.000001,'east-west tennis ball renders in world axes')

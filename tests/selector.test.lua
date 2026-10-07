@@ -6,6 +6,10 @@ local function check(v,message) checks=checks+1; if not v then error(message) en
 local function square(x,y,z) return {getX=function()return x end,getY=function()return y end,getZ=function()return z end} end
 local result
 S.cancel()
+local rotated,validRotated=S.rectangle(10,20,27,29,0)
+check(validRotated and rotated.x2==28 and rotated.y2==30,"18 by 10 east-west white-line rectangle accepted")
+local _,invalidRotated=S.rectangle(10,20,26,29,0)
+check(not invalidRotated,"east-west court still requires minimum playing length")
 check(not S.blocksInput(),"idle cancel does not block gameplay")
 check(S.begin(M.player,function(r) result=r end),"begin")
 local cursor=M.cell.drag

@@ -445,5 +445,29 @@ M.reset(); a=M.player("alpha")
 db().courts={legacy={id="legacy",mode="tennis",x1=100,x2=114,y1=100,y2=130,z=0,owner="alpha"}}
 command(a,"join",{id="legacy"})
 check(S.members.alpha~=nil,"existing oversized court remains playable without forced migration")
+M.reset(); a=M.player("alpha",100,202.5)
+-- Native east/west net remains in place through register, join and serve audits.
+for y=200,209 do
+    local sq=M.square(109,y,0)
+    sq.flags.HoppableW=true; sq.flags.collideW=true
+    local net={getSprite=function() return {getName=function() return "recreational_sports_01_53" end} end,
+        getProperties=function() return {Is=function(_,f) return f==IsoFlagType.HoppableW or f==IsoFlagType.collideW end} end}
+    function sq:getObjects() return {size=function() return 1 end,get=function() return net end} end
+end
+command(a,"create",{x1=100,x2=118,y1=200,y2=210,z=0,mode="tennis"})
+id=tostring(db().nextId)
+check(db().courts[id] and db().courts[id].x2==118 and not db().courts[id].frame,"east-west registration persists world rectangle")
+command(a,"join",{id=id}); s=S.members.alpha
+check(s and s.core.court.frame and s.core.court.y2==118,"east-west join creates local play frame")
+local receive=PTCore.receiveArea(s.core,1)
+local rx,ry=PTWall.toWorld(s.core.court,receive.x,receive.y)
+b=M.player("beta",rx,ry); command(b,"join",{id=id})
+check(s.core.receiverReady,"east-west receiver readiness converts world coordinates")
+input(a,s,1)
+check(s.core.phase=="rally" and s.core.ball.y<101,"west baseline player serves eastward")
+s.core.points={2,1}; command(a,"sync",{})
+saved=PTCore.snapshot(M.db); M.reset(); M.db=saved
+a=M.player("alpha",100,202.5); command(a,"sync",{}); s=S.members.alpha
+check(s and s.core.court.frame and s.core.court.x1==200 and s.core.points[1]==2,"east-west restart preserves score and canonical frame")
 checks=(checks or 0)+count
 print("SERVER PASS: "..count.." behavioral checks")

@@ -4,7 +4,7 @@ Player-versus-player tennis and solo wall practice, without AI. Version 0.2.2 is
 
 ## Modules
 
-- **PT_Core:** pure Lua ballistic state, serve/rally/scoring and aim targets. Tennis uses world coordinates and a rectangular court. Free practice uses a cardinal local frame, real wall extents and a flared player area.
+- **PT_Core:** pure Lua ballistic state, serve/rally/scoring and aim targets. Tennis uses a rectangular court; east-west courts swap world axes into the same local simulation frame. Free practice uses a cardinal local frame, real wall extents and a flared player area.
 - **PT_Wall:** selects an actual north/west tile edge from either face, covering all four directions. It gathers 1–5 continuous solid wall tiles. Starting depth is 1–14 tiles perpendicular to the wall, not diagonal distance. Cursor search and alternative clear routes permit nearby usable segments. Loaded floors, wall/window/door/fence flags and grid traversal reject invalid routes; diagonal traversal checks both legs and destination edges.
 - **PT_Server:** validates sender identity, membership, equipment, sequence/rate limits and session tokens. Only tennis courts are registered; startWall creates a temporary session and serves. Tennis strokes require both participants. Every stroke requires a sports racket in the primary hand; serve/start also requires a tennis ball in the secondary hand. The virtual ball does not create or consume inventory balls.
 - **PT_Client:** RMB+LMB starts/restarts wall practice and serves tennis points. During a rally, cursor aim and LMB work without native aiming stance, retaining ordinary movement/run controls. J/K remain backup controls. Waiting blocks sports input. The sports primary item guards normal combat input even outside sessions. UI-consumed clicks are excluded. A zero-area overlay avoids intercepting native inventory hit tests; the ball renders through OnPostRender.
@@ -18,7 +18,7 @@ Server fixed update is 30Hz, ballistic integration 120Hz, snapshots 10Hz. Aim is
 
 Free practice has fixed depth14. Its player area expands linearly to two additional tiles on each side at the back; actual reflecting wall extents do not expand beyond the selected maximum five-tile segment. Maximum rear width is nine tiles. Reflection reverses wall-normal velocity while preserving tangent velocity and the gravity trajectory. No hitter-distance landing correction remains. Initial shots and moving-ball routes are checked for loaded floors/obstacles, and original wall extents are periodically revalidated. Ceiling/3D occlusion and dynamic actor collision are not simulated.
 
-Tennis remains a north–south rectangle with a virtual net and point/deuce scoring. Four points with a two-point lead finish the current game; there is no aggregate games or sets score. New court bounds are8–10 tiles wide and18–20 long; existing geometry remains usable. Rally first bounce is45% into the opponent half, initial apex is capped at2.4 and rebound apex at1.1. See TRAJECTORY.md for the model and range rationale. There are no tiebreaks or change of ends. Both modes share controls and cosmetic swing. The wall trapezoid is not applied to tennis.
+Tennis supports north–south and east–west rectangles with a virtual net and point/deuce scoring. Four points with a two-point lead finish the current game; there is no aggregate games or sets score. New court bounds are8–10 tiles wide and18–20 long; existing geometry remains usable. Rally first bounce is45% into the opponent half, initial apex is capped at2.4 and rebound apex at1.1. See TRAJECTORY.md for the model and range rationale. There are no tiebreaks or change of ends. Both modes share controls and cosmetic swing. The wall trapezoid is not applied to tennis.
 
 ## Persistence and compatibility
 
@@ -42,3 +42,9 @@ Inspected media root: C:/Program Files (x86)/Steam/steamapps/common/ProjectZombo
 ## Next evidence gate
 
 Follow PLAYTEST.md in SP and a two-client dedicated match. Prior user testing established playable wall rallies on a clear wall, but the latest motion and rendering fixes still require fresh visual and multiplayer evidence. No AI branch is planned.
+
+## Existing vanilla tennis nets
+
+Court validation permits only recreational_sports_01_49/50/51 (N edge) and52/53/54 (W edge) at the exact central line with matching orientation. Installed newtiledefinitions.tiles.txt marks these Hoppable and WallNTrans/WallWTrans; native loading supplies collideN/collideW. Other blockers on the same square still invalidate the court. Solid furniture/water/floor validation remains unchanged. There is no general low-fence rebound: virtual tennis net contact below or at0.91 is a fault/lost point under the existing scoring rules. Physical player collision is unchanged.
+
+The vanilla gym cell49_4 includes52/53/54 in its tile dictionary. The user's measured court lines are18x10; registration accepts this east-west orientation. Static validation is not proof of a live successful registration on every vanilla court.

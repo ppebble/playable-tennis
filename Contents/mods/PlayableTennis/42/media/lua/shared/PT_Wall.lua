@@ -16,17 +16,52 @@ local function blocked(sq,edge)
     return not sq or flag(sq,"collide"..edge) or flag(sq,"Wall"..edge)
         or flag(sq,"Window"..edge) or flag(sq,"DoorWall"..edge) or flag(sq,"Hoppable"..edge)
 end
+-- Only the installed vanilla tennis-net sprites may occupy the virtual net.
+local tennisNets = {
+    recreational_sports_01_49="N", recreational_sports_01_50="N", recreational_sports_01_51="N",
+    recreational_sports_01_52="W", recreational_sports_01_53="W", recreational_sports_01_54="W"
+}
+local function edgeProperties(props,edge)
+    if not props then return false end
+    for _,prefix in ipairs({"collide","Wall","Window","window","DoorWall","Hoppable"}) do
+        local value=IsoFlagType[prefix..edge]
+        if value and props:Is(value) then return true end
+    end
+    return false
+end
+local function centralTennisNet(c,sq,x,y,edge)
+    if c.mode~="tennis" then return false end
+    local eastWest=c.x2-c.x1>c.y2-c.y1 and c.x2-c.x1>=18
+    if (eastWest and (edge~="W" or x~=(c.x1+c.x2)/2))
+        or (not eastWest and (edge~="N" or y~=(c.y1+c.y2)/2)) then return false end
+    if not sq.getObjects then return false end
+    local objects=sq:getObjects()
+    local found=false
+    for i=0,objects:size()-1 do
+        local object=objects:get(i)
+        local sprite=object:getSprite()
+        local netEdge=sprite and tennisNets[sprite:getName()]
+        if netEdge==edge then found=true
+        elseif edgeProperties(object:getProperties(),edge) then return false end
+    end
+    return found
+end
 function W.validateCourt(c, squareAt)
     if c.freeWall then return PTWall.valid(c,squareAt) end
+    if c.mode=="tennis" and c.frame then
+        local x1,y1=W.toWorld(c,c.x1,c.y1)
+        local x2,y2=W.toWorld(c,c.x2,c.y2)
+        c={mode="tennis",z=c.z,x1=math.min(x1,x2),y1=math.min(y1,y2),x2=math.max(x1,x2),y2=math.max(y1,y2)}
+    end
     for x=c.x1,c.x2-1 do
         for y=c.y1,c.y2-1 do
             local sq=squareAt(x,y,c.z)
             if not sq or not sq:getFloor() then return false,"Court must be fully loaded and have a floor." end
             if sq:isSolid() or sq:isSolidTrans() or flag(sq,"water") then return false,"Clear solid obstacles/water from the court." end
-            if x>c.x1 and (flag(sq,"collideW") or flag(sq,"WallW") or flag(sq,"WindowW") or flag(sq,"DoorWallW")) then
+            if x>c.x1 and blocked(sq,"W") and not centralTennisNet(c,sq,x,y,"W") then
                 return false,"An interior west wall/fence blocks this court."
             end
-            if y>c.y1 and (flag(sq,"collideN") or flag(sq,"WallN") or flag(sq,"WindowN") or flag(sq,"DoorWallN")) then
+            if y>c.y1 and blocked(sq,"N") and not centralTennisNet(c,sq,x,y,"N") then
                 return false,"An interior north wall/fence blocks this court."
             end
             if c.mode=="wall" and y==c.y1 then

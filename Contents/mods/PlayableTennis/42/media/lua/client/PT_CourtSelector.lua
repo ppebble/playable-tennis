@@ -24,9 +24,7 @@ function Cursor:onJoypadDirRight() end
 function S.rectangle(x1, y1, x2, y2, z)
     local r = {x1=math.min(x1,x2), y1=math.min(y1,y2),
         x2=math.max(x1,x2)+1, y2=math.max(y1,y2)+1, z=z, mode="tennis"}
-    local w, h = r.x2-r.x1, r.y2-r.y1
-    local limits=PTCore.courtLimits
-    return r, w>=limits.minWidth and w<=limits.maxWidth and h>=limits.minLength and h<=limits.maxLength
+    return r, PTCore.validCourtSize(r)
 end
 
 function S.isActive()
@@ -64,7 +62,7 @@ function Cursor:validate(x,y,fresh)
     local r,valid=S.rectangle(self.startX or x,self.startY or y,x,y,self.z)
     if not valid then
         local limits=PTCore.courtLimits
-        return false,"Court size: "..limits.minWidth.."-"..limits.maxWidth.." x "..limits.minLength.."-"..limits.maxLength
+        return false,"Court width "..limits.minWidth.."-"..limits.maxWidth..", length "..limits.minLength.."-"..limits.maxLength.." (either orientation)"
     end
     if not self.validator then return true end
     local t=getTimestampMs()

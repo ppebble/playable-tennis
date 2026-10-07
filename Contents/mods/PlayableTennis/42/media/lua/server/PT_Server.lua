@@ -90,8 +90,9 @@ local function receiverReady(s,servingSlot)
         local players=getOnlinePlayers()
         for i=0,players:size()-1 do if players:get(i)==p then connected=true; break end end
     else connected=p~=nil and getSpecificPlayer(0)==p end
-    return connected and p~=nil and not p:isDead() and not p:getVehicle() and p:getZ()==core.court.z
-        and sportsRacket(p) and PTCore.receiverInArea(core,servingSlot,p:getX(),p:getY()) or false
+    if not connected or not p or p:isDead() or p:getVehicle() or p:getZ()~=core.court.z or not sportsRacket(p) then return false end
+    local x,y=PTWall.toLocal(core.court,p:getX(),p:getY())
+    return PTCore.receiverInArea(core,servingSlot,x,y)
 end
 local function publish(s)
     PTCore.refreshTestTarget(s.core)
@@ -154,7 +155,7 @@ local function restore()
         elseif not S.sessions[id] then
             local s=newSession(db.courts[id])
             if s then
-                s.core=PTCore.snapshot(record.core); s.core.court=PTCore.snapshot(db.courts[id])
+                s.core=PTCore.snapshot(record.core); s.core.court=PTCore.playCourt(db.courts[id])
                 s.names=PTCore.snapshot(record.names or {})
                 pause(s,"Point score saved. Waiting for participants to return.")
                 for _,who in pairs(s.names) do S.members[who]=s end
@@ -241,8 +242,8 @@ function S.dispatch(p,command,args)
         if not integer(args.z,0,7) then fail(p,"Invalid floor."); return end
         local c={x1=math.min(args.x1,args.x2),x2=math.max(args.x1,args.x2),y1=math.min(args.y1,args.y2),y2=math.max(args.y1,args.y2),z=args.z,mode=args.mode}
         local limits=PTCore.courtLimits
-        if c.x2-c.x1<limits.minWidth or c.x2-c.x1>limits.maxWidth or c.y2-c.y1<limits.minLength or c.y2-c.y1>limits.maxLength then
-            fail(p,"Court width must be "..limits.minWidth.."-"..limits.maxWidth.." and length "..limits.minLength.."-"..limits.maxLength.." tiles (north/south)."); return
+        if not PTCore.validCourtSize(c) then
+            fail(p,"Court width must be "..limits.minWidth.."-"..limits.maxWidth.." and length "..limits.minLength.."-"..limits.maxLength.." tiles (either orientation)."); return
         end
         if not near(p,c,3) then fail(p,"Stand beside the court to register it."); return end
         local db=database()

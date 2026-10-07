@@ -466,6 +466,22 @@ end
 
 -- Narrow-wall extreme aim halves the outgoing diagonal spread; reflection
 -- still preserves tangent speed instead of bending the ball back at the user.
+local ns=PTCore.new({mode="tennis",x1=200,x2=210,y1=100,y2=118,z=0})
+local legacy=PTCore.new({mode="tennis",x1=0,x2=14,y1=0,y2=12,z=0})
+check(not legacy.court.frame and legacy.court.x2==14,"legacy short wide court retains original orientation")
+local ew=PTCore.new({mode="tennis",x1=100,x2=118,y1=200,y2=210,z=0})
+check(ew.court.frame and ew.court.x1==ns.court.x1 and ew.court.y2==ns.court.y2,"east-west court uses canonical width and length")
+local normalized=PTCore.new(ew.court)
+check(normalized.court.x1==200 and normalized.court.y1==100,"restored canonical court is not rotated twice")
+check(PTCore.serve(ns,1,202.5,100,0) and PTCore.serve(ew,1,202.5,100,0),"both orientations accept equivalent serve")
+for i=1,180 do
+    PTCore.step(ns,1/120); PTCore.step(ew,1/120)
+    check(ns.phase==ew.phase and ns.bounces==ew.bounces,"court orientation preserves rally decisions")
+    if ns.ball then
+        local wx,wy=PTWall.toWorld(ew.court,ew.ball.x,ew.ball.y)
+        check(near(wx,ns.ball.y) and near(wy,ns.ball.x) and near(ew.ball.z,ns.ball.z),"rotated trajectory preserves height and world placement")
+    end
+end
 local narrowWall={mode="wall",freeWall=true,x1=-2.5,x2=2.5,y1=0,y2=14,z=0,wallMinX=-2.5,wallMaxX=2.5}
 for _,aim in ipairs({-1,1}) do
     local state=PTCore.new(narrowWall)

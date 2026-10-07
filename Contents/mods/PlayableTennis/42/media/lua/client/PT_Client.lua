@@ -516,16 +516,18 @@ function Overlay:render()
                 .. " | Wall " .. tostring((court.wallMaxX or x2)-(court.wallMinX or x1))
                 .. " tiles | Z " .. tostring(z),2)
         else
-            line("Server: slot " .. tostring(core.server) .. " | You: " .. (C.slot == 1 and "north" or "south"),2)
+            local side=core.court.frame and (C.slot==1 and "west" or "east") or (C.slot==1 and "north" or "south")
+            line("Server: slot " .. tostring(core.server) .. " | You: " .. side,2)
         end
         line(core.phase=="rally" and "Cursor: aim | LMB: swing | Release RMB to run"
             or "Hold RMB + LMB: serve / restart | J/K: backup",3)
         local even = (core.points[1] + core.points[2]) % 2 == 0
         local servingSlot = core.testTarget and C.slot or core.server
         local left = (servingSlot == 1 and even) or (servingSlot == 2 and not even)
-        local side = left and "west (lower X)" or "east (higher X)"
+        local side = court.frame and (left and "north (lower Y)" or "south (higher Y)") or (left and "west (lower X)" or "east (higher X)")
+        local baseline = court.frame and (servingSlot==1 and "WEST" or "EAST") or (servingSlot==1 and "NORTH" or "SOUTH")
         line(court.mode == "wall" and ("Depth " .. tostring(y2-y1) .. " tiles | Hold ball + RMB/LMB to restart.")
-            or "Green serve box: " .. (servingSlot==1 and "NORTH" or "SOUTH") .. ", " .. side .. ".",4)
+            or "Green serve box: " .. baseline .. ", " .. side .. ".",4)
         local readyMessage
         if not core.paused and court.mode=="tennis" and core.phase=="ready" and core.receiverReady~=nil then
             readyMessage=core.receiverReady and "Receiver ready - serve when ready."
