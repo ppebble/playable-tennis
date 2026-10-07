@@ -49,11 +49,11 @@ for _,size in ipairs({{7,20},{11,20},{8,17},{8,21}}) do
     check(last().command=="error" and db().courts[id],"new court dimension limits preserve old valid registration")
 end
 create(a)
-check(last().command=="list" and db().nextId==2 and not db().courts[id],"overlapping registration replaces old court")
+check(last().command=="error" and db().nextId==1 and db().courts[id],"overlapping own registration rejected")
 for i=1,3 do create(a,"tennis",100+i*20) end
 create(a,"tennis",200)
 local registered=0; for _ in pairs(db().courts) do registered=registered+1 end
-check(db().nextId==6 and registered==1,"only newest registered court survives")
+check(db().nextId==5 and registered==1,"only newest registered court survives")
 
 for _,bad in ipairs({"hole","WindowN","DoorWallN","HoppableN"}) do
     M.reset(); a=M.player("alpha")
@@ -130,8 +130,8 @@ a,id,s=setup("tennis")
 b=M.player("beta",142,100)
 local id2=create(b,"tennis",140); command(b,"join",{id=id2})
 local s2=S.members.beta
-check(s2 and not S.members.alpha and not S.sessions[id],"replacement closes old session")
-check(not db().courts[id],"replacement deletes old court")
+check(s2 and S.members.alpha==s and S.sessions[id]==s,"another owner creates an independent court session")
+check(db().courts[id] and db().sets[id],"another owner preserves original court and checkpoint")
 command(a,"leave",{})
 check(S.sessions[id2]==s2,"old member cannot close new session")
 command(b,"leave",{}); command(b,"join",{id=id2})
@@ -171,7 +171,7 @@ M.reset(); a=M.player("alpha")
 db().courts={}; db().nextId=64
 for i=1,64 do db().courts[tostring(i)]={id=tostring(i),x1=1000+i*20,x2=1008+i*20,y1=100,y2=120,z=0,mode="tennis",owner="owner"..i} end
 create(a)
-check(last().command=="list" and db().nextId==65 and not db().courts["64"],"legacy courts replaced by singleton")
+check(last().command=="list" and db().nextId==65 and db().courts["64"],"registration preserves other owners legacy courts")
 M.reset(); a=M.player("alpha"); id=create(a)
 for i=1,16 do S.sessions["occupied"..i]={} end
 command(a,"join",{id=id})
@@ -231,8 +231,10 @@ for _,edge in ipairs({"N","W"}) do
         check(not S.members.beta,"temporary wall session cannot be joined")
         input(a,s,1,{session="stale"})
         check(s.seq[1]==nil and s.core.ball==originalBall,"stale wall input cannot mutate trajectory")
+        s.core.bestRally=7
         command(a,"leave",{})
-        check(not S.members.alpha and (not db().courts or empty(db().courts)),"wall closure leaves no saved court")
+        check(not S.sessions[id] and not S.members.alpha and (not db().courts or empty(db().courts)),"wall removal clears temporary area and membership")
+        check(db().wallBest.alpha==7 and last().args.message=="Wall practice area removed.","wall removal keeps personal best and confirms area removal")
     end
 end
 M.reset(); a=M.player("alpha")
@@ -302,7 +304,7 @@ M.square(103,105,0).solid=true
 create(a)
 check(S.members.alpha==s and db().courts[id],"invalid replacement preserves old court session")
 M.square(103,105,0).solid=false
-create(a)
+create(a,"tennis",140)
 check(not S.members.alpha and not S.sessions[id] and not db().courts[id],"valid replacement closes normal session")
 M.reset(); a=M.player("alpha"); local wallId,wallSession=startWall(a)
 b=M.player("beta"); create(b)
@@ -493,5 +495,29 @@ check(#M.training==before,"unequipped player receives no wall practice XP")
 M.reset(); a=M.player("alpha"); id,s=startWall(a); S.tick()
 M.time=M.time+5000; S.tick()
 check(#M.training==0,"server stall cannot award catch-up exercise XP")
+-- Ownership is per username, including replacement and overlap rejection.
+M.reset(); a=M.player("alpha"); id=create(a); command(a,"join",{id=id}); s=S.members.alpha
+s.core.points={2,3}; audit()
+b=M.player("beta"); local betaId=create(b,"tennis",140); command(b,"join",{id=betaId})
+local betaSession=S.members.beta
+betaSession.core.points={1,2}; audit()
+local alphaNew=create(a,"tennis",180)
+check(not db().courts[id] and db().courts[alphaNew].owner=="alpha","owner replacement removes only own old court")
+check(S.members.beta==betaSession and db().sets[betaId].core.points[2]==2,"owner replacement preserves other active score")
+check(not S.members.alpha and not db().sets[id],"owner replacement ends own old game")
+local beforeId=db().nextId
+create(a,"tennis",140)
+check(last().command=="error" and db().nextId==beforeId,"overlap with another owner rejected")
+check(db().courts[alphaNew] and S.members.beta==betaSession,"invalid overlap preserves both courts and opponent game")
+a.admin=true; create(a,"tennis",140)
+check(last().command=="error" and db().courts[betaId],"admin creation cannot silently replace another owner")
+-- Partial and containing rectangles cannot replace an existing own court.
+a.admin=false
+for _,x in ipairs({180,176,184}) do
+    create(a,"tennis",x)
+    check(last().command=="error" and db().courts[alphaNew],"own overlap rejected at "..x)
+end
+create(a,"tennis",188)
+check(last().command=="list" and not db().courts[alphaNew],"touching edge with no shared area permits replacement")
 checks=(checks or 0)+count
 print("SERVER PASS: "..count.." behavioral checks")

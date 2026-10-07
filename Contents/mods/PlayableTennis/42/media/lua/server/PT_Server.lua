@@ -228,7 +228,10 @@ function S.dispatch(p,command,args)
         if s then refreshPause(s); publish(s) else emit(p,"left",{message="No active session. Join a nearby court."}) end
         return
     end
-    if command=="leave" then if s then close(s,"A participant left. Join again for a new game.") end; return end
+    if command=="leave" then
+        if s then close(s,s.core.court.freeWall and "Wall practice area removed." or "A participant left. Join again for a new game.") end
+        return
+    end
     if command=="startWall" then
         if s then fail(p,"Leave your current court/practice before starting wall practice."); return end
         if p:isDead() or p:getVehicle() or not sportsRacket(p) or not ballInHand(p) then
@@ -268,12 +271,22 @@ function S.dispatch(p,command,args)
         local db=database()
         local ok,why=clearCourt(c)
         if not ok then fail(p,why); return end
-        -- Validate first: an invalid selection must not destroy a playable court.
-        for id in pairs(db.courts) do
-            if S.sessions[id] then close(S.sessions[id],"The registered court was replaced.") end
+        -- Validate before replacing this owner's court; never remove another owner's game.
+        for _,other in pairs(db.courts) do
+            if other.z==c.z and c.x1<other.x2 and c.x2>other.x1
+                and c.y1<other.y2 and c.y2>other.y1 then
+                fail(p,"This area overlaps an existing court."); return
+            end
         end
-        db.courts={}
-        db.sets={}
+        local owned={}
+        for id,other in pairs(db.courts) do
+            if other.owner==who then owned[#owned+1]=id end
+        end
+        for _,id in ipairs(owned) do
+            if S.sessions[id] then close(S.sessions[id],"The registered court was replaced.") end
+            db.courts[id]=nil
+            db.sets[id]=nil
+        end
         db.nextId=db.nextId+1; c.id=tostring(db.nextId); c.owner=who; c.bestRally=0
         db.courts[c.id]=c
         emit(p,"created",{id=c.id})

@@ -247,6 +247,11 @@ local function drawCourt()
             or p:getY()<c.y1-3 or p:getY()>c.y2+3 then return false,"Stand beside the court to register it." end
         if SandboxVars and SandboxVars.PlayableTennis and SandboxVars.PlayableTennis.AllowCourtCreation==false
             and p:getAccessLevel()~="admin" then return false,"Court registration is admin-only." end
+        for _,other in pairs(C.courts) do
+            if other.z==c.z and c.x1<other.x2 and c.x2>other.x1 and c.y1<other.y2 and c.y2>other.y1 then
+                return false,"This area overlaps an existing court."
+            end
+        end
         return PTWall.validateCourt(c,function(x,y,z) return getCell():getGridSquare(x,y,z) end)
     end)
 end
@@ -265,7 +270,7 @@ local function contextMenu(playerIndex, context, objects, test)
     local root = context:addOption("Playable Tennis")
     local menu = ISContextMenu:getNew(context)
     context:addSubMenu(root, menu)
-    menu:addOption("Draw / replace court (rectangle selection)",nil,drawCourt)
+    menu:addOption("Draw / replace my court (rectangle selection)",nil,drawCourt)
     menu:addOption("Refresh court list / synchronize", nil, sync)
     if canStartPractice() then
         menu:addOption("Start wall practice here (sports racket + ball in hands)",
@@ -286,7 +291,7 @@ local function contextMenu(playerIndex, context, objects, test)
     if C.session then
         menu:addOption("Serve [K]", "serve", input)
         menu:addOption("Swing [J]", "swing", input)
-        menu:addOption("Leave court", nil, leave)
+        menu:addOption(C.core and C.core.court.freeWall and "Remove wall practice area" or "Leave court", nil, leave)
     end
     if now() - C.lastSync > 2000 then sync() end
 end

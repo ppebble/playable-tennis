@@ -404,3 +404,17 @@ check(ClientMock.texts[2].text=='Wait a moment before swinging again.','yellow i
 PTClient.receive('left',{session=PTClient.session}); PTClient.messageUntil=0
 ClientMock.texts={}; ClientMock.draws={}; PTClient.overlay:render()
 check(#ClientMock.texts==0 and #ClientMock.draws==0,'holding racket outside play has no persistent HUD')
+
+-- The wall removal menu reuses the authorized leave path and clears presentation.
+local wallRemoval=snapshot(1,'rally',1,'wall-remove')
+wallRemoval.core.court.mode='wall'; wallRemoval.core.court.freeWall=true
+PTClient.receive('state',wallRemoval)
+local removeMenu=ClientMock.menu()
+Events.OnFillWorldObjectContextMenu.callback(0,removeMenu,{{getSquare=function() return square end}},false)
+local removeWall
+for _,o in ipairs(removeMenu.submenu.options) do if o.name=='Remove wall practice area' then removeWall=o end end
+check(removeWall~=nil,'active wall practice has explicit remove-area menu')
+removeWall.callback()
+check(last().command=='leave','wall removal sends normal authorized leave command')
+PTClient.receive('left',{session='wall-remove',message='Wall practice area removed.'})
+check(not PTClient.core and not PTClient.session,'confirmed wall removal clears HUD and area overlay')
