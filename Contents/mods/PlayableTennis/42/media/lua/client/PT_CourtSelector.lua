@@ -1,4 +1,5 @@
 require "PT_Core"
+require "PT_Text"
 PTCourtSelector = PTCourtSelector or {}
 local S = PTCourtSelector
 -- Remote clients cannot require server/BuildingObjects/ISBuildingObject.
@@ -62,7 +63,7 @@ function Cursor:validate(x,y,fresh)
     local r,valid=S.rectangle(self.startX or x,self.startY or y,x,y,self.z)
     if not valid then
         local limits=PTCore.courtLimits
-        return false,"Court width "..limits.minWidth.."-"..limits.maxWidth..", length "..limits.minLength.."-"..limits.maxLength.." (either orientation)"
+        return false,PTText.get("Court width %1-%2, length %3-%4 (either orientation)",limits.minWidth,limits.maxWidth,limits.minLength,limits.maxLength)
     end
     if not self.validator then return true end
     local t=getTimestampMs()
@@ -100,7 +101,7 @@ function Cursor:render(x,y,z,square)
     if self.startX and not valid then red,green=1,0.2 end
     self.preview={court=r,red=red,green=green}
     if getTextManager and getMouseX then
-        local label = tostring(r.x2-r.x1).." x "..tostring(r.y2-r.y1).."  "..(reason or "Click to submit court")
+        local label = tostring(r.x2-r.x1).." x "..tostring(r.y2-r.y1).."  "..PTText.message(reason or "Click to submit court")
         getTextManager():DrawString(UIFont.Small,getMouseX()+18,getMouseY()+18,label,red,green,0.3,1)
     end
 end

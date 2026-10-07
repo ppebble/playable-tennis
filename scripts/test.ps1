@@ -21,6 +21,19 @@ if ($LASTEXITCODE -ne 0) { throw 'Native court property test compilation failed'
 $cp = "$build;$(Join-Path $GamePath 'projectzomboid.jar')"
 $core = Join-Path $mod 'media/lua/shared/PT_Core.lua'
 $wall = Join-Path $mod 'media/lua/shared/PT_Wall.lua'
+$text = Join-Path $mod 'media/lua/client/PT_Text.lua'
+# Feed the real translation JSON into the Kahlua presentation tests.
+$translationFixture = Join-Path $build 'translation-data.lua'
+$fixtureLines = @('TranslationData = {}')
+foreach ($language in @('EN','KO')) {
+    $fixtureLines += 'TranslationData.' + $language + ' = {'
+    $translations = Get-Content (Join-Path $mod "media/lua/shared/Translate/$language/ContextMenu.json") -Raw | ConvertFrom-Json
+    foreach ($property in $translations.PSObject.Properties) {
+        $fixtureLines += '[' + ($property.Name | ConvertTo-Json -Compress) + '] = ' + ($property.Value | ConvertTo-Json -Compress) + ','
+    }
+    $fixtureLines += '}'
+}
+[IO.File]::WriteAllLines($translationFixture, $fixtureLines, [Text.UTF8Encoding]::new($false))
 Push-Location $GamePath
 try {
 & $java -cp $cp CourtPropertiesNativeTest
@@ -39,17 +52,20 @@ if ($LASTEXITCODE -ne 0) { throw 'Core tests failed' }
 if ($LASTEXITCODE -ne 0) { throw 'Wall geometry tests failed' }
 & $java -cp $cp LuaHarness (Join-Path $repo 'tests/server-bootstrap.lua') $core $wall (Join-Path $mod 'media/lua/server/PT_Server.lua') (Join-Path $repo 'tests/server.test.lua')
 if ($LASTEXITCODE -ne 0) { throw 'Server tests failed' }
-& $java -cp $cp LuaHarness (Join-Path $repo 'tests/client-bootstrap.lua') $core $wall (Join-Path $mod 'media/lua/client/PT_Client.lua') (Join-Path $repo 'tests/client.test.lua')
+& $java -cp $cp LuaHarness (Join-Path $repo 'tests/client-bootstrap.lua') $core $wall $text (Join-Path $mod 'media/lua/client/PT_Client.lua') (Join-Path $repo 'tests/client.test.lua')
 if ($LASTEXITCODE -ne 0) { throw 'Client tests failed' }
-& $java -cp $cp LuaHarness (Join-Path $repo 'tests/client-bootstrap.lua') (Join-Path $repo 'tests/render-bootstrap.lua') $core $wall (Join-Path $mod 'media/lua/client/PT_Client.lua') (Join-Path $repo 'tests/render.test.lua')
+& $java -cp $cp LuaHarness (Join-Path $repo 'tests/client-bootstrap.lua') (Join-Path $repo 'tests/render-bootstrap.lua') $core $wall $text (Join-Path $mod 'media/lua/client/PT_Client.lua') (Join-Path $repo 'tests/render.test.lua')
 if ($LASTEXITCODE -ne 0) { throw 'Per-frame ball rendering tests failed' }
 & $java -cp $cp LuaHarness (Join-Path $repo 'tests/swing-bootstrap.lua') (Join-Path $mod 'media/lua/client/PT_Swing.lua') (Join-Path $repo 'tests/swing.test.lua')
 if ($LASTEXITCODE -ne 0) { throw 'Cosmetic swing tests failed' }
-& $java -cp $cp LuaHarness (Join-Path $repo 'tests/selector-bootstrap.lua') $core (Join-Path $mod 'media/lua/client/PT_CourtSelector.lua') (Join-Path $repo 'tests/selector.test.lua')
+& $java -cp $cp LuaHarness (Join-Path $repo 'tests/selector-bootstrap.lua') $core $text (Join-Path $mod 'media/lua/client/PT_CourtSelector.lua') (Join-Path $repo 'tests/selector.test.lua')
 if ($LASTEXITCODE -ne 0) { throw 'Court rectangle selection tests failed' }
-& $java -cp $cp LuaHarness (Join-Path $repo 'tests/client-bootstrap.lua') (Join-Path $repo 'tests/selector-client-bootstrap.lua') $core $wall (Join-Path $mod 'media/lua/client/PT_CourtSelector.lua') (Join-Path $mod 'media/lua/client/PT_Client.lua') (Join-Path $repo 'tests/selector-client.test.lua')
+& $java -cp $cp LuaHarness (Join-Path $repo 'tests/client-bootstrap.lua') (Join-Path $repo 'tests/selector-client-bootstrap.lua') $core $wall $text (Join-Path $mod 'media/lua/client/PT_CourtSelector.lua') (Join-Path $mod 'media/lua/client/PT_Client.lua') (Join-Path $repo 'tests/selector-client.test.lua')
 if ($LASTEXITCODE -ne 0) { throw 'Remote-client selector startup integration failed' }
-& $java -cp $cp LuaHarness (Join-Path $repo 'tests/selector-bootstrap.lua') $core (Join-Path $repo 'tests/selector-native-bootstrap.lua') (Join-Path $GamePath 'media/lua/shared/ISBaseObject.lua') (Join-Path $GamePath 'media/lua/server/BuildingObjects/ISBuildingObject.lua') (Join-Path $mod 'media/lua/client/PT_CourtSelector.lua') (Join-Path $repo 'tests/selector-native.test.lua')
+& $java -cp $cp LuaHarness (Join-Path $repo 'tests/client-bootstrap.lua') (Join-Path $repo 'tests/selector-client-bootstrap.lua') $core $wall $text (Join-Path $mod 'media/lua/client/PT_CourtSelector.lua') (Join-Path $mod 'media/lua/client/PT_Client.lua') $translationFixture (Join-Path $repo 'tests/localization.test.lua')
+if ($LASTEXITCODE -ne 0) { throw 'English/Korean presentation localization failed' }
+
+& $java -cp $cp LuaHarness (Join-Path $repo 'tests/selector-bootstrap.lua') $core (Join-Path $repo 'tests/selector-native-bootstrap.lua') (Join-Path $GamePath 'media/lua/shared/ISBaseObject.lua') (Join-Path $GamePath 'media/lua/server/BuildingObjects/ISBuildingObject.lua') $text (Join-Path $mod 'media/lua/client/PT_CourtSelector.lua') (Join-Path $repo 'tests/selector-native.test.lua')
 if ($LASTEXITCODE -ne 0) { throw 'Native singleplayer cursor dispatch failed' }
 & $java -cp $cp LuaHarness (Join-Path $repo 'tests/items-bootstrap.lua') (Join-Path $mod 'media/lua/shared/PT_ConvertRacket.lua') (Join-Path $mod 'media/lua/client/PT_RacketMenu.lua') (Join-Path $repo 'tests/items.test.lua')
 if ($LASTEXITCODE -ne 0) { throw 'Racket conversion tests failed' }

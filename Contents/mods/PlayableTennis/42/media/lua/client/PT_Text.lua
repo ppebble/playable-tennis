@@ -1,0 +1,171 @@
+-- Resolve presentation text on the receiving client, never in server state.
+PTText = {}
+local keys = {
+    ["Tennis disabled by server."] = "ContextMenu_PT_TennisDisabled",
+    ["Draw / replace my court (rectangle selection)"] = "ContextMenu_PT_Drawreplacemycourtrectangleselection",
+    ["Refresh court list / synchronize"] = "ContextMenu_PT_Refreshcourtlistsynchronize",
+    ["Start wall practice here (sports racket + ball in hands)"] = "ContextMenu_PT_Startwallpracticeheresportsracketballin",
+    ["Serve [K]"] = "ContextMenu_PT_ServeK",
+    ["Swing [J]"] = "ContextMenu_PT_SwingJ",
+    ["Remove wall practice area"] = "ContextMenu_PT_Removewallpracticearea",
+    ["Leave court"] = "ContextMenu_PT_Leavecourt",
+    ["Serve Zone"] = "ContextMenu_PT_ServeZone",
+    ["Receive Zone"] = "ContextMenu_PT_ReceiveZone",
+    ["Waiting for opponent"] = "ContextMenu_PT_Waitingforopponent",
+    ["Paused - return to court with your racket"] = "ContextMenu_PT_Pausedreturntocourtwithyourracket",
+    ["Waiting for receiver in Receive Zone"] = "ContextMenu_PT_WaitingforreceiverinReceiveZone",
+    ["Your serve"] = "ContextMenu_PT_Yourserve",
+    ["Deuce"] = "ContextMenu_PT_Deuce",
+    ["Rally"] = "ContextMenu_PT_Rally",
+    ["Click to submit court"] = "ContextMenu_PT_Clicktosubmitcourt",
+    ["Swing animation failed; tennis input is still sent. See the game log."] = "ContextMenu_PT_Swinganimationfailedtennisinputisstillsent",
+    ["Swing animation unavailable while another action is in progress."] = "ContextMenu_PT_Swinganimationunavailablewhileanotheractionisin",
+    ["Waiting for opponent."] = "ContextMenu_PT_WaitingforopponentText",
+    ["Game paused. Both players must return with their rackets."] = "ContextMenu_PT_GamepausedBothplayersmustreturnwiththeir",
+    ["Game finished. Use the court menu to join or start again."] = "ContextMenu_PT_GamefinishedUsethecourtmenutojoin",
+    ["Stay alive and on foot to play tennis."] = "ContextMenu_PT_Stayaliveandonfoottoplaytennis",
+    ["Return to the court and its floor to play tennis."] = "ContextMenu_PT_Returntothecourtanditsfloorto",
+    ["Equip an intact SPORTS Tennis Racket in your primary hand."] = "ContextMenu_PT_EquipanintactSPORTSTennisRacketinyour",
+    ["Tennis server module unavailable."] = "ContextMenu_PT_Tennisservermoduleunavailable",
+    ["Leave your current match/practice first."] = "ContextMenu_PT_Leaveyourcurrentmatchpracticefirst",
+    ["Hold a sports racket in your primary hand and Tennis Ball in your secondary hand."] = "ContextMenu_PT_Holdasportsracketinyourprimaryhand",
+    ["Left court."] = "ContextMenu_PT_Leftcourt",
+    ["Hold the Tennis Ball in your secondary hand to serve."] = "ContextMenu_PT_HoldtheTennisBallinyoursecondaryhand",
+    ["Hold a Tennis Ball in your secondary hand to serve."] = "ContextMenu_PT_HoldaTennisBallinyoursecondaryhand",
+    ["Waiting for the receiver: stand in the blue return area with a sports racket."] = "ContextMenu_PT_Waitingforthereceiverstandintheblue",
+    ["Waiting for server state; syncing..."] = "ContextMenu_PT_Waitingforserverstatesyncing",
+    ["Hold RMB while clicking LMB to serve, or press K."] = "ContextMenu_PT_HoldRMBwhileclickingLMBtoserveor",
+    ["Registering court..."] = "ContextMenu_PT_Registeringcourt",
+    ["Stand beside the court to register it."] = "ContextMenu_PT_Standbesidethecourttoregisterit",
+    ["Court registration is admin-only."] = "ContextMenu_PT_Courtregistrationisadminonly",
+    ["This area overlaps another player's court."] = "ContextMenu_PT_Thisareaoverlapsanotherplayerscourt",
+    ["Wait a moment before swinging again."] = "ContextMenu_PT_Waitamomentbeforeswingingagain",
+    ["The ball is too high or too low to hit."] = "ContextMenu_PT_Theballistoohighortoolow",
+    ["Hold right-click, then left-click to serve."] = "ContextMenu_PT_Holdrightclickthenleftclicktoserve",
+    ["The receiver must enter Receive Zone with a racket."] = "ContextMenu_PT_ThereceivermustenterReceiveZonewitha",
+    ["Hold a usable sports racket in your right hand."] = "ContextMenu_PT_Holdausablesportsracketinyourright",
+    ["Hold a tennis ball in your left hand to serve."] = "ContextMenu_PT_Holdatennisballinyourlefthand",
+    ["Reconnecting to the game..."] = "ContextMenu_PT_Reconnectingtothegame",
+    ["Move into Serve Zone to serve."] = "ContextMenu_PT_MoveintoServeZonetoserve",
+    ["Court must be fully loaded and have a floor."] = "ContextMenu_PT_Courtmustbefullyloadedandhavea",
+    ["Clear solid obstacles/water from the court."] = "ContextMenu_PT_Clearsolidobstacleswaterfromthecourt",
+    ["An interior west wall/fence blocks this court."] = "ContextMenu_PT_Aninteriorwestwallfenceblocksthiscourt",
+    ["An interior north wall/fence blocks this court."] = "ContextMenu_PT_Aninteriornorthwallfenceblocksthiscourt",
+    ["Wall practice needs an unbroken solid NORTH wall (no doors/windows/fences)."] = "ContextMenu_PT_WallpracticeneedsanunbrokensolidNORTHwall",
+    ["Wall practice has no selected wall."] = "ContextMenu_PT_Wallpracticehasnoselectedwall",
+    ["The practice wall is unloaded, damaged or no longer solid."] = "ContextMenu_PT_Thepracticewallisunloadeddamagedorno",
+    ["Stay on the selected side of the practice wall."] = "ContextMenu_PT_Stayontheselectedsideofthepractice",
+    ["No clear route to this wall. Move past obstacles onto loaded floor."] = "ContextMenu_PT_NoclearroutetothiswallMovepast",
+    ["Invalid wall selection."] = "ContextMenu_PT_Invalidwallselection",
+    ["Choose a solid wall without doors, windows or fences."] = "ContextMenu_PT_Chooseasolidwallwithoutdoorswindowsor",
+    ["Stand 1 to 14 tiles from the wall, measured straight out from its face."] = "ContextMenu_PT_Stand1to14tilesfromthewall",
+    ["Move closer sideways to the selected wall's practice area."] = "ContextMenu_PT_Moveclosersidewaystotheselectedwalls",
+    ["Aim near a solid wall within 14 tiles of its face."] = "ContextMenu_PT_Aimnearasolidwallwithin14tiles",
+    ["Aim near a solid wall on your floor; doors, windows and fences cannot be used."] = "ContextMenu_PT_Aimnearasolidwallonyourfloor",
+    ["Point score saved. Waiting for participants to return."] = "ContextMenu_PT_PointscoresavedWaitingforparticipantstoreturn",
+    ["Tennis disabled by server; score saved."] = "ContextMenu_PT_Tennisdisabledbyserverscoresaved",
+    ["Waiting for both participants on court with intact sports rackets; score saved."] = "ContextMenu_PT_Waitingforbothparticipantsoncourtwithintact",
+    ["Participants ready. Replay the current point."] = "ContextMenu_PT_ParticipantsreadyReplaythecurrentpoint",
+    ["Playable Tennis is disabled by the server."] = "ContextMenu_PT_PlayableTennisisdisabledbytheserver",
+    ["Player connection changed. Sync to resume your saved game."] = "ContextMenu_PT_PlayerconnectionchangedSynctoresumeyoursaved",
+    ["No active session. Join a nearby court."] = "ContextMenu_PT_NoactivesessionJoinanearbycourt",
+    ["Wall practice area removed."] = "ContextMenu_PT_Wallpracticearearemoved",
+    ["A participant left. Join again for a new game."] = "ContextMenu_PT_AparticipantleftJoinagainforanew",
+    ["Leave your current court/practice before starting wall practice."] = "ContextMenu_PT_Leaveyourcurrentcourtpracticebeforestartingwall",
+    ["Hold a sports racket in your primary hand and a Tennis Ball in your secondary hand, on foot."] = "ContextMenu_PT_HoldasportsracketinyourprimaryhandText",
+    ["Server session limit reached."] = "ContextMenu_PT_Serversessionlimitreached",
+    ["All shot paths to this wall are obstructed. Move sideways or select another segment."] = "ContextMenu_PT_Allshotpathstothiswallareobstructed",
+    ["Register courts for 1v1 only. Aim at a wall to start solo practice."] = "ContextMenu_PT_Registercourtsfor1v1onlyAimata",
+    ["Invalid court coordinates."] = "ContextMenu_PT_Invalidcourtcoordinates",
+    ["Invalid floor."] = "ContextMenu_PT_Invalidfloor",
+    ["The registered court was replaced."] = "ContextMenu_PT_Theregisteredcourtwasreplaced",
+    ["Only the owner/admin may remove a nearby court."] = "ContextMenu_PT_Onlytheowneradminmayremoveanearby",
+    ["The registered court was removed."] = "ContextMenu_PT_Theregisteredcourtwasremoved",
+    ["Leave your current session first."] = "ContextMenu_PT_Leaveyourcurrentsessionfirst",
+    ["Court not found nearby."] = "ContextMenu_PT_Courtnotfoundnearby",
+    ["Wall practice no longer needs court registration. Aim at a nearby wall."] = "ContextMenu_PT_WallpracticenolongerneedscourtregistrationAim",
+    ["Court is full."] = "ContextMenu_PT_Courtisfull",
+    ["Session changed; sync and join again."] = "ContextMenu_PT_Sessionchangedsyncandjoinagain",
+    ["Invalid aim."] = "ContextMenu_PT_Invalidaim",
+    ["Waiting for a second player."] = "ContextMenu_PT_Waitingforasecondplayer",
+    ["Stay on the court, alive and on foot."] = "ContextMenu_PT_Stayonthecourtaliveandonfoot",
+    ["Receiver must stand in the blue receive area with an intact SPORTS Tennis Racket, alive and on foot."] = "ContextMenu_PT_Receivermuststandinthebluereceivearea",
+    ["The shot path to the wall is obstructed."] = "ContextMenu_PT_Theshotpathtothewallisobstructed",
+    ["Participant disconnected, died, or left the court."] = "ContextMenu_PT_Participantdisconnecteddiedorleftthecourt",
+    ["Server pause: replay point."] = "ContextMenu_PT_Serverpausereplaypoint",
+    ["Ball met an obstacle/unloaded floor. Hold the ball to restart."] = "ContextMenu_PT_BallmetanobstacleunloadedfloorHoldthe",
+    ["Ready. Serve from your baseline and the indicated service side."] = "ContextMenu_PT_ReadyServefromyourbaselineandtheindicated",
+    ["Invalid serve input."] = "ContextMenu_PT_Invalidserveinput",
+    ["Wait until ready to serve."] = "ContextMenu_PT_Waituntilreadytoserve",
+    ["The other player serves."] = "ContextMenu_PT_Theotherplayerserves",
+    ["Stand inside the wall practice area, 1 to 14 tiles from the wall."] = "ContextMenu_PT_Standinsidethewallpracticearea1to",
+    ["Stand within 1.5 tiles of your baseline, inside the court width."] = "ContextMenu_PT_Standwithin15tilesofyourbaseline",
+    ["Practice started. Return after the wall contact."] = "ContextMenu_PT_PracticestartedReturnafterthewallcontact",
+    ["Serve in flight; receiver must allow the first bounce."] = "ContextMenu_PT_Serveinflightreceivermustallowthefirst",
+    ["Invalid swing input."] = "ContextMenu_PT_Invalidswinginput",
+    ["No ball in play."] = "ContextMenu_PT_Noballinplay",
+    ["Swing cooldown."] = "ContextMenu_PT_Swingcooldown",
+    ["Hit on your own side of the net."] = "ContextMenu_PT_Hitonyourownsideofthenet",
+    ["Wait for the wall return."] = "ContextMenu_PT_Waitforthewallreturn",
+    ["Wait for the opponent's return."] = "ContextMenu_PT_Waitfortheopponentsreturn",
+    ["Let the serve bounce first."] = "ContextMenu_PT_Lettheservebouncefirst",
+    ["Ball is outside racket height (0.15 to 2.4)."] = "ContextMenu_PT_Ballisoutsideracketheight015to",
+    ["Ball is out of reach."] = "ContextMenu_PT_Ballisoutofreach",
+    ["Return to the wall practice area."] = "ContextMenu_PT_Returntothewallpracticearea",
+    ["Return to the court."] = "ContextMenu_PT_Returntothecourt",
+    ["Return hit."] = "ContextMenu_PT_Returnhit",
+    ["Two bounces."] = "ContextMenu_PT_Twobounces",
+    ["Out."] = "ContextMenu_PT_Out",
+    ["Net."] = "ContextMenu_PT_Net",
+    ["Ball bounced before reaching the wall."] = "ContextMenu_PT_Ballbouncedbeforereachingthewall",
+    ["Serve missed the diagonal service box."] = "ContextMenu_PT_Servemissedthediagonalservicebox",
+    ["Ball landed on the hitter's side."] = "ContextMenu_PT_Balllandedonthehittersside",
+    ["Missed the wall (height 0 to 2.8)."] = "ContextMenu_PT_Missedthewallheight0to28",
+    ["Unreturned ball left the play area."] = "ContextMenu_PT_Unreturnedballlefttheplayarea",
+    ["Ball left the play area."] = "ContextMenu_PT_Balllefttheplayarea",
+    ["Join %1 (tennis)"] = "ContextMenu_PT_Join1tennis",
+    ["Remove %1 (owner/admin; ends its game)"] = "ContextMenu_PT_Remove1owneradminendsitsgame",
+    ["Player %1"] = "ContextMenu_PT_Player1",
+    ["%1 Win"] = "ContextMenu_PT_1Win",
+    ["%1 to serve"] = "ContextMenu_PT_1toserve",
+    ["Court width %1-%2, length %3-%4 (either orientation)"] = "ContextMenu_PT_Courtwidth12length34either",
+    ["Court width must be %1-%2 and length %3-%4 tiles (either orientation)."] = "ContextMenu_PT_Courtwidthmustbe12andlength",
+    ["%1 Point: player %2."] = "ContextMenu_PT_1Pointplayer2",
+    ["Player %1 wins."] = "ContextMenu_PT_Player1wins",
+    ["%1 Practice ready; best %2."] = "ContextMenu_PT_1Practicereadybest2",
+    ["Double fault: %1"] = "ContextMenu_PT_Doublefault1",
+    ["First fault: %1 Serve again."] = "ContextMenu_PT_Firstfault1Serveagain",
+    ["Wall return: %1."] = "ContextMenu_PT_Wallreturn1",
+    ["Court %1 | Right-click: Join"] = "ContextMenu_PT_Court1RightclickJoin",
+    ["Court %1 registered. Right-click > Playable Tennis > Join."] = "ContextMenu_PT_Court1registeredRightclickPlayableTennisJoin",
+    ["Rally %1 | Best %2 | Depth %3"] = "ContextMenu_PT_Rally1Best2Depth3",
+ }
+function PTText.get(english, ...)
+    local key=keys[english]
+    local translated=key and getTextOrNull and getTextOrNull(key)
+    local result=translated or english
+    local args={...}
+    return (result:gsub("%%([1-4])",function(index)
+        return tostring(args[tonumber(index)] or ("%"..index))
+    end))
+end
+function PTText.message(message)
+    local text=tostring(message or "")
+    if keys[text] then return PTText.get(text) end
+    if text:find("green serve box",1,true) then return PTText.get("Move into Serve Zone to serve.") end
+    local a,b,c,d=text:match("^Court width must be (%d+)%-([%d]+) and length (%d+)%-([%d]+) tiles %(either orientation%)%.$")
+    if a then return PTText.get("Court width must be %1-%2 and length %3-%4 tiles (either orientation).",a,b,c,d) end
+    a,b=text:match("^(.-) Point: player (%d+)%.$")
+    if a then return PTText.get("%1 Point: player %2.",PTText.message(a),b) end
+    a=text:match("^Player (%d+) wins%.$")
+    if a then return PTText.get("Player %1 wins.",a) end
+    a,b=text:match("^(.-) Practice ready; best (%d+)%.$")
+    if a then return PTText.get("%1 Practice ready; best %2.",PTText.message(a),b) end
+    a=text:match("^Double fault: (.+)$")
+    if a then return PTText.get("Double fault: %1",PTText.message(a)) end
+    a=text:match("^First fault: (.+) Serve again%.$")
+    if a then return PTText.get("First fault: %1 Serve again.",PTText.message(a)) end
+    a=text:match("^Wall return: (%d+)%.$")
+    if a then return PTText.get("Wall return: %1.",a) end
+    return text
+end

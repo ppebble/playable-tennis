@@ -1,6 +1,6 @@
 -- A remote B42 client does not load server/BuildingObjects/ISBuildingObject.
 -- Fail dependencies explicitly instead of inventing that server-only class.
-function require(name) if name=="PT_Core" and PTCore then return PTCore end; error("Client-unavailable dependency: "..name) end
+function require(name) if name=="PT_Text" and PTText then return PTText end; if name=="PT_Core" and PTCore then return PTCore end; error("Client-unavailable dependency: "..name) end
 ISBuildingObject=nil
 SelectorMock={events={},right=false,highlights={},time=1000}
 local M=SelectorMock

@@ -2,6 +2,8 @@
 require "ISUI/ISPanel"
 require "ISUI/ISContextMenu"
 require "PT_Core"
+require "PT_Text"
+local T=PTText
 require "PT_Wall"
 require "PT_Swing"
 require "PT_CourtSelector"
@@ -113,7 +115,7 @@ function C.receive(command, args)
         C.joinPending=false
         notice(args.message)
     elseif command == "created" then
-        notice("Court "..tostring(args.id).." registered. Right-click > Playable Tennis > Join.")
+        notice(T.get("Court %1 registered. Right-click > Playable Tennis > Join.",args.id))
     elseif command == "left" then
         if args.session and C.session and args.session ~= C.session then return end
         if C.session then C.retired[C.session] = true end
@@ -270,10 +272,10 @@ local function contextMenu(playerIndex, context, objects, test)
     local root = context:addOption("Playable Tennis")
     local menu = ISContextMenu:getNew(context)
     context:addSubMenu(root, menu)
-    menu:addOption("Draw / replace my court (rectangle selection)",nil,drawCourt)
-    menu:addOption("Refresh court list / synchronize", nil, sync)
+    menu:addOption(T.get("Draw / replace my court (rectangle selection)"),nil,drawCourt)
+    menu:addOption(T.get("Refresh court list / synchronize"), nil, sync)
     if canStartPractice() then
-        menu:addOption("Start wall practice here (sports racket + ball in hands)",
+        menu:addOption(T.get("Start wall practice here (sports racket + ball in hands)"),
             {x=square:getX()+0.5,y=square:getY()+0.5},startWallAt)
     end
     local count = 0
@@ -281,17 +283,17 @@ local function contextMenu(playerIndex, context, objects, test)
         if court.id and court.x1 and court.y1 and court.z == math.floor(p:getZ())
             and math.abs(p:getX() - court.x1) < 100 and math.abs(p:getY() - court.y1) < 100 then
             if court.mode=="tennis" then
-                menu:addOption("Join " .. tostring(court.id) .. " (" .. tostring(court.mode) .. ")",court.id,join)
+                menu:addOption(T.get("Join %1 (tennis)",court.id),court.id,join)
             end
-            menu:addOption("Remove " .. tostring(court.id) .. " (owner/admin; ends its game)", court.id, removeCourt)
+            menu:addOption(T.get("Remove %1 (owner/admin; ends its game)",court.id), court.id, removeCourt)
             count = count + 1
             if count >= 20 then break end
         end
     end
     if C.session then
-        menu:addOption("Serve [K]", "serve", input)
-        menu:addOption("Swing [J]", "swing", input)
-        menu:addOption(C.core and C.core.court.freeWall and "Remove wall practice area" or "Leave court", nil, leave)
+        menu:addOption(T.get("Serve [K]"), "serve", input)
+        menu:addOption(T.get("Swing [J]"), "swing", input)
+        menu:addOption(C.core and C.core.court.freeWall and T.get("Remove wall practice area") or T.get("Leave court"), nil, leave)
     end
     if now() - C.lastSync > 2000 then sync() end
 end
@@ -429,7 +431,7 @@ function Overlay:render()
                 self:worldLine(court.x2,court.y2,court.x1,court.y2,court.z,0.6,0.8,1,true)
                 self:worldLine(court.x1,court.y2,court.x1,court.y1,court.z,0.6,0.8,1,true)
                 local lx,ly=isoToScreenX(0,court.x1,court.y1,court.z),isoToScreenY(0,court.x1,court.y1,court.z)
-                self:drawText("Court "..tostring(court.id).." | Right-click: Join",lx,ly-20,0.6,0.8,1,1,UIFont.Small)
+                self:drawText(T.get("Court %1 | Right-click: Join",court.id),lx,ly-20,0.6,0.8,1,1,UIFont.Small)
             end
         end
     end
@@ -454,7 +456,7 @@ function Overlay:render()
                     self:worldLine(a.x2,a.y2,a.x1,a.y2,z,0.2,1,0.4)
                     self:worldLine(a.x1,a.y2,a.x1,a.y1,z,0.2,1,0.4)
                     local sx,sy=project((a.x1+a.x2)/2,a.baseline,z)
-                    self:drawText("Serve Zone",sx-35,sy-25,0.2,1,0.4,1,UIFont.Small)
+                    self:drawText(T.get("Serve Zone"),sx-35,sy-25,0.2,1,0.4,1,UIFont.Small)
                 end
                 if core.phase=="ready" then
                     local a=PTCore.receiveArea(core,core.server)
@@ -463,7 +465,7 @@ function Overlay:render()
                     self:worldLine(a.x2,a.y2,a.x1,a.y2,z,0.3,0.7,1)
                     self:worldLine(a.x1,a.y2,a.x1,a.y1,z,0.3,0.7,1)
                     local rx,ry=project(a.x,a.y,z)
-                    self:drawText("Receive Zone",rx-40,ry-25,0.3,0.7,1,1,UIFont.Small)
+                    self:drawText(T.get("Receive Zone"),rx-40,ry-25,0.3,0.7,1,1,UIFont.Small)
                 end
             else
                 -- Mark the actual wall foot, not a fractional storey above it.
@@ -494,23 +496,22 @@ function Overlay:render()
         end
         if court.mode=="wall" then
             self:drawRect(center-width/2,top,width,36,0.75,0.04,0.06,0.07)
-            centered("Rally "..tostring(core.rally or 0).." | Best "..tostring(core.bestRally or 0)
-                .." | Depth "..tostring(y2-y1),top+8,UIFont.Small,1)
+            centered(T.get("Rally %1 | Best %2 | Depth %3",core.rally or 0,core.bestRally or 0,y2-y1),top+8,UIFont.Small,1)
         else
             local names=C.names or {}
             local function name(slot)
-                return names[slot] or "Player "..tostring(slot)
+                return names[slot] or T.get("Player %1",slot)
             end
             local serving=core.server
             local status
-            if core.phase=="finished" then status=name(core.winner or serving).." Win"
-            elseif C.waiting then status="Waiting for opponent"
-            elseif core.paused then status="Paused - return to court with your racket"
+            if core.phase=="finished" then status=T.get("%1 Win",name(core.winner or serving))
+            elseif C.waiting then status=T.get("Waiting for opponent")
+            elseif core.paused then status=T.get("Paused - return to court with your racket")
             elseif core.phase=="ready" then
-                status=core.receiverReady==false and "Waiting for receiver in Receive Zone"
-                    or (serving==C.slot and "Your serve" or name(serving).." to serve")
-            elseif core.points[1]>=3 and core.points[1]==core.points[2] then status="Deuce"
-            else status="Rally" end
+                status=core.receiverReady==false and T.get("Waiting for receiver in Receive Zone")
+                    or (serving==C.slot and T.get("Your serve") or T.get("%1 to serve",name(serving)))
+            elseif core.points[1]>=3 and core.points[1]==core.points[2] then status=T.get("Deuce")
+            else status=T.get("Rally") end
             local scoreZoom=2.4
             local scoreHeight=getTextManager():getFontHeight(UIFont.Large)*scoreZoom
             self:drawRect(center-width/2,top,width,64+scoreHeight,0.75,0.04,0.06,0.07)
@@ -534,6 +535,7 @@ function Overlay:render()
         }
         message=friendly[message] or message
         if message:find("green serve box",1,true) then message="Move into Serve Zone to serve." end
+        message=T.message(message)
         local screenWidth=getCore():getScreenWidth()
         local tw=getTextManager():MeasureStringX(UIFont.Small,message)
         local zoom=math.min(1,(screenWidth-56)/math.max(1,tw))
