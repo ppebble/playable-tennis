@@ -77,7 +77,7 @@ local function publish(s)
     for slot=1,2 do
         local p=s.players[slot]
         if p then emit(p,"state",{session=s.id,slot=slot,revision=s.revision,lastSeq=s.seq[slot] or 0,
-            core=PTCore.snapshot(s.core),waiting=s.core.court.mode=="tennis" and not (s.players[1] and s.players[2]),players=names}) end
+            core=PTCore.snapshot(s.core),waiting=s.core.court.mode=="tennis" and not s.core.testTarget and not (s.players[1] and s.players[2]),players=names}) end
     end
 end
 local function close(s,reason)
@@ -168,55 +168,66 @@ function S.dispatch(p,command,args)
         if c.x2-c.x1<6 or c.x2-c.x1>14 or c.y2-c.y1<12 or c.y2-c.y1>30 then fail(p,"Court width must be 6-14 and length 12-30 tiles (north/south)."); return end
         if not near(p,c,3) then fail(p,"Stand beside the court to register it."); return end
         local db=database()
-        local count,owned=0,0
-        for _,other in pairs(db.courts) do
-            count=count+1
-            if other.owner==who then owned=owned+1 end
-            if c.z==other.z and c.x1<other.x2 and c.x2>other.x1 and c.y1<other.y2 and c.y2>other.y1 then fail(p,"This overlaps a registered court."); return end
-        end
-        if count>=64 or owned>=4 then fail(p,"Court limit reached (4 per owner, 64 per world). Remove an idle court first."); return end
         local ok,why=clearCourt(c)
         if not ok then fail(p,why); return end
+        -- Validate first: an invalid selection must not destroy a playable court.
+        for id in pairs(db.courts) do
+            if S.sessions[id] then close(S.sessions[id],"The registered court was replaced.") end
+        end
+        db.courts={}
         db.nextId=db.nextId+1; c.id=tostring(db.nextId); c.owner=who; c.bestRally=0
         db.courts[c.id]=c
-        list(p); return
+        if isServer() then
+            local players=getOnlinePlayers()
+            for i=0,players:size()-1 do list(players:get(i)) end
+        else list(p) end
+        return
     end
     if command=="remove" then
         local c=database().courts[args.id]
         if not c or not near(p,c,5) or (c.owner~=who and p:getAccessLevel()~="admin") or S.sessions[c.id] then fail(p,"Only the owner/admin may remove a nearby idle court."); return end
         database().courts[c.id]=nil; list(p); return
     end
-    if command=="join" then
+    if command=="join" or command=="startSolo" then
         if s then fail(p,"Leave your current session first."); return end
         local c=database().courts[args.id]
         if not c or not near(p,c,4) then fail(p,"Court not found nearby."); return end
         if c.mode~="tennis" then fail(p,"Wall practice no longer needs court registration. Aim at a nearby wall."); return end
         local ok,why=clearCourt(c); if not ok then fail(p,why); return end
         s=S.sessions[c.id]
+        if s and (command=="startSolo" or s.core.testTarget) then fail(p,"Court is occupied. Leave the current match before starting another mode."); return end
+        if command=="startSolo" and (p:getVehicle() or not sportsRacket(p) or not ballInHand(p)) then
+            fail(p,"Hold a sports racket and a Tennis Ball, on foot, to start solo testing."); return
+        end
         if not s then
             s=newSession(c)
             if not s then fail(p,"Server session limit reached."); return end
         end
         local slot=not s.players[1] and 1 or (c.mode=="tennis" and not s.players[2] and 2 or nil)
         if not slot then fail(p,"Court is full."); return end
+        if command=="startSolo" then PTCore.enableTestTarget(s.core) end
         s.players[slot]=p; S.members[who]=s; publish(s); return
     end
-    if command~="serve" and command~="swing" then return end
+    if command~="serve" and command~="swing" and command~="feed" then return end
     if not s or args.session~=s.id then fail(p,"Session changed; sync and join again."); return end
     local slot=s.players[1]==p and 1 or 2
     if not integer(args.seq,1,2147483647) or args.seq<=(s.seq[slot] or 0) then return end
     s.seq[slot]=args.seq
     if type(args.aim)~="number" or args.aim~=args.aim or args.aim < -1 or args.aim > 1 then fail(p,"Invalid aim."); return end
-    if s.core.court.mode=="tennis" and not (s.players[1] and s.players[2]) then fail(p,"Waiting for a second player."); publish(s); return end
+    if s.core.court.mode=="tennis" and not s.core.testTarget and not (s.players[1] and s.players[2]) then fail(p,"Waiting for a second player."); publish(s); return end
     if not near(p,s.core.court,2) or p:getVehicle() then fail(p,"Stay on the court, alive and on foot."); return end
     if not sportsRacket(p) then fail(p,"Equip an intact SPORTS Tennis Racket in your primary hand."); return end
     if s.core.court.freeWall then
         local ok,why=PTWall.valid(s.core.court,squareAt,p:getX(),p:getY())
         if not ok then close(s,why); return end
     end
-    if command=="serve" then
+    if command=="serve" or command=="feed" then
         if not ballInHand(p) then fail(p,"Hold a Tennis Ball in your secondary hand to serve."); return end
         local ok,why=clearCourt(s.core.court); if not ok then close(s,why); return end
+    end
+    if command=="feed" then
+        if not PTCore.feedTestTarget(s.core) then fail(p,"Target feed is available only while ready in solo testing.") end
+        publish(s); return
     end
     local px,py=p:getX(),p:getY()
     if s.core.court.frame then px,py=PTWall.toLocal(s.core.court,px,py) end

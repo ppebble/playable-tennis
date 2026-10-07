@@ -45,10 +45,11 @@ end
 local id=create(a)
 check(db().courts[id]~=nil,"valid court persisted")
 create(a)
-check(last().command=="error" and db().nextId==1,"overlapping registration rejected")
+check(last().command=="list" and db().nextId==2 and not db().courts[id],"overlapping registration replaces old court")
 for i=1,3 do create(a,"tennis",100+i*20) end
 create(a,"tennis",200)
-check(db().nextId==4 and last().command=="error","per owner limit enforced")
+local registered=0; for _ in pairs(db().courts) do registered=registered+1 end
+check(db().nextId==6 and registered==1,"only newest registered court survives")
 
 for _,bad in ipairs({"hole","WindowN","DoorWallN","HoppableN"}) do
     M.reset(); a=M.player("alpha")
@@ -123,15 +124,14 @@ a,id,s=setup("tennis")
 b=M.player("beta",142,100)
 local id2=create(b,"tennis",140); command(b,"join",{id=id2})
 local s2=S.members.beta
-check(s2 and s2~=s,"independent courts create independent sessions")
-s.core.bestRally=7; command(a,"leave",{})
-check(S.sessions[id2]==s2 and S.members.beta==s2,"leaving does not close another court")
-check(db().courts[id].bestRally==7,"registered court record persists when session closes")
-a.x=102; a.y=120; command(a,"join",{id=id})
-check(S.members.alpha.id~=s.id and S.members.alpha.core.bestRally==7,"rejoin creates fresh session and restores practice best")
-check(S.members.alpha.core.phase=="ready" and not S.members.alpha.core.ball,"rejoin never resumes stale trajectory")
-input(a,S.members.alpha,1,{session=s.id})
-check(S.members.alpha.seq[1]==nil,"closed session packet cannot enter fresh session")
+check(s2 and not S.members.alpha and not S.sessions[id],"replacement closes old session")
+check(not db().courts[id],"replacement deletes old court")
+command(a,"leave",{})
+check(S.sessions[id2]==s2,"old member cannot close new session")
+command(b,"leave",{}); command(b,"join",{id=id2})
+check(S.members.beta.id~=s2.id,"rejoin creates fresh session")
+input(b,S.members.beta,1,{session=s2.id})
+check(S.members.beta.seq[1]==nil,"stale session input rejected")
 command(b,"remove",{id=id2})
 check(db().courts[id2]~=nil,"active court removal rejected")
 command(b,"leave",{}); command(b,"remove",{id=id2})
@@ -167,7 +167,7 @@ M.reset(); a=M.player("alpha")
 db().courts={}; db().nextId=64
 for i=1,64 do db().courts[tostring(i)]={id=tostring(i),x1=1000+i*20,x2=1008+i*20,y1=100,y2=120,z=0,mode="tennis",owner="owner"..i} end
 create(a)
-check(last().command=="error" and db().nextId==64,"world court limit enforced")
+check(last().command=="list" and db().nextId==65 and not db().courts["64"],"legacy courts replaced by singleton")
 M.reset(); a=M.player("alpha"); id=create(a)
 for i=1,16 do S.sessions["occupied"..i]={} end
 command(a,"join",{id=id})
@@ -281,5 +281,28 @@ M.reset(); a=M.player("alpha",105,114)
 for offset=-4,4 do M.square(100+offset,100,0).flags.WallN=true end
 command(a,"startWall",{x=100,y=100,edge="N"})
 check(S.members.alpha and S.members.alpha.core.phase=="rally","server starts diagonal practice at perpendicular depth fourteen")
+M.reset(); a=M.player("alpha"); id=create(a)
+command(a,"startSolo",{id=id}); s=S.members.alpha
+check(s and s.core.testTarget and not s.players[2],"solo owns only real player slot")
+check(last().command=="state" and not last().args.waiting,"solo publishes playable state")
+b=M.player("beta"); command(b,"join",{id=id})
+check(not S.members.beta,"normal player cannot enter test session")
+command(b,"startSolo",{id=id}); check(not S.members.beta,"other tester cannot replace occupied session")
+command(a,"feed",{session=s.id,seq=1,aim=0})
+check(s.core.phase=="rally" and s.core.lastHit==2,"authorized explicit target feed")
+local fed=s.core.ball
+command(a,"feed",{session=s.id,seq=1,aim=0})
+check(s.core.ball==fed,"duplicate feed cannot reset ball")
+command(a,"feed",{session=s.id,seq=2,aim=0})
+check(s.core.ball==fed,"feed during rally rejected")
+M.square(103,105,0).solid=true
+create(a)
+check(S.members.alpha==s and db().courts[id],"invalid replacement preserves old court session")
+M.square(103,105,0).solid=false
+create(a)
+check(not S.members.alpha and not S.sessions[id] and not db().courts[id],"valid replacement closes solo session")
+M.reset(); a=M.player("alpha"); local wallId,wallSession=startWall(a)
+b=M.player("beta"); create(b)
+check(S.sessions[wallId]==wallSession and S.members.alpha==wallSession,"replacement preserves free wall session")
 checks=(checks or 0)+count
 print("SERVER PASS: "..count.." behavioral checks")

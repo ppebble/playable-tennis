@@ -267,3 +267,34 @@ check(not PTCore.serve(outside,1,0,14.01,0),"serve cannot extend normal depth pa
 outside.phase,outside.wallReady,outside.clock="rally",true,2
 outside.ball={x=6.4,y=14,z=1,vx=0,vy=1,vz=0}
 check(not PTCore.swing(outside,1,6.4,14,0),"swing outside trapezoid is rejected")
+local solo = new()
+check(not PTCore.feedTestTarget(solo), "normal match cannot feed")
+check(PTCore.enableTestTarget(solo), "tennis enables explicit target")
+check(solo.testTarget.x < 4 and solo.testTarget.y == 16, "target far left fixed position")
+check(PTCore.feedTestTarget(solo) and solo.server == 2 and solo.servicePending, "feed uses legal slot two serve")
+check(not PTCore.feedTestTarget(solo), "feed cannot interrupt rally")
+for _,pending in ipairs({true,false}) do
+    solo.phase,solo.servicePending,solo.lastHit,solo.clock="rally",pending,1,2
+    solo.ball={x=solo.testTarget.x,y=solo.testTarget.y,z=1,vx=0,vy=0,vz=0}
+    PTCore.step(solo,1/120)
+    check(solo.lastHit==(pending and 1 or 2),"target respects serve bounce")
+end
+solo.lastHit,solo.servicePending,solo.clock=1,false,3
+solo.ball={x=7.8,y=16,z=1,vx=0,vy=0,vz=0}
+PTCore.step(solo,1/120)
+check(solo.lastHit==1,"target cannot chase side shots")
+solo.ball={x=solo.testTarget.x,y=16,z=3,vx=0,vy=0,vz=0}
+PTCore.step(solo,1/120)
+check(solo.lastHit==1,"target cannot hit excessive height")
+solo.phase="finished"
+check(not PTCore.feedTestTarget(solo),"finished game cannot feed")
+local rallyTest=new()
+PTCore.enableTestTarget(rallyTest)
+rallyTest.phase,rallyTest.lastHit,rallyTest.clock="rally",2,1
+rallyTest.ball={x=4,y=3,z=1.2,vx=0,vy=0,vz=0}
+check(PTCore.swing(rallyTest,1,4,3,-2/3),"player aims normal shot at fixed target")
+for i=1,600 do
+    PTCore.step(rallyTest,1/120)
+    if rallyTest.lastHit==2 or rallyTest.phase~="rally" then break end
+end
+check(rallyTest.lastHit==2 and rallyTest.shotId==2,"real trajectory reaches target and returns without teleporting")

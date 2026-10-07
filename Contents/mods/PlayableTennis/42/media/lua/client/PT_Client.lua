@@ -4,6 +4,7 @@ require "ISUI/ISContextMenu"
 require "PT_Core"
 require "PT_Wall"
 require "PT_Swing"
+require "PT_CourtSelector"
 
 PTClient = { courts = {}, seq = 0, revision = -1, retired = {}, lastSync = 0 }
 local C = PTClient
@@ -82,6 +83,10 @@ local function join(id)
     C.joinPending = true
     send("join", { id = id })
 end
+local function startSolo(id)
+    C.joinPending=true
+    send("startSolo",{id=id})
+end
 local function removeCourt(id) send("remove", { id = id }) end
 local function startWallAt(args)
     if C.session then notice("Leave your current match/practice first."); return end
@@ -133,7 +138,7 @@ function C.receive(command, args)
     end
 end
 local function inputBlocked()
-    return getCore():isDoingTextEntry()
+    return getCore():isDoingTextEntry() or PTCourtSelector.blocksInput()
 end
 local function aim()
     if isKeyDown(Keyboard.KEY_LEFT) then return -1 end
@@ -195,17 +200,13 @@ local function keyPressed(key)
     if key == Keyboard.KEY_J then input("swing") end
     if key == Keyboard.KEY_K then input("serve") end
 end
-local function mark(square, corner)
-    C.draft = C.draft or {}
-    C.draft[corner] = { x = square:getX(), y = square:getY(), z = square:getZ() }
-    notice("Marked corner " .. corner .. " at " .. square:getX() .. ", " .. square:getY())
+local function drawCourt()
+    PTCourtSelector.begin(player(),function(args) send("create",args); sync() end)
 end
-local function register(mode)
-    local a, b = C.draft[1], C.draft[2]
-    if a.z ~= b.z then notice("Corners must be on the same floor."); return end
-    send("create", { x1 = math.min(a.x,b.x), y1 = math.min(a.y,b.y),
-        x2 = math.max(a.x,b.x), y2 = math.max(a.y,b.y), z = a.z, mode = mode })
-    sync()
+local function feed()
+    if not C.session or not C.core or not C.core.testTarget or C.core.phase~="ready" or inputBlocked() then return end
+    C.seq=C.seq+1
+    send("feed",{session=C.session,seq=C.seq,aim=0})
 end
 local function contextMenu(playerIndex, context, objects, test)
     -- One keyboard and HUD owner per client; split-screen is outside this prototype.
@@ -217,17 +218,12 @@ local function contextMenu(playerIndex, context, objects, test)
     for _, object in ipairs(objects) do
         if object.getSquare then square = object:getSquare(); if square then break end end
     end
-    local locationLabel = square and "clicked tile" or "current feet (empty click)"
     square = square or p:getSquare()
     if not square then return end
     local root = context:addOption("Playable Tennis")
     local menu = ISContextMenu:getNew(context)
     context:addSubMenu(root, menu)
-    menu:addOption("Mark corner 1 (" .. locationLabel .. ")", square, mark, 1)
-    menu:addOption("Mark corner 2 (" .. locationLabel .. ")", square, mark, 2)
-    if C.draft and C.draft[1] and C.draft[2] then
-        menu:addOption("Register 1v1 court", "tennis", register)
-    end
+    menu:addOption("Draw / replace court (rectangle selection)",nil,drawCourt)
     menu:addOption("Refresh court list / synchronize", nil, sync)
     if not C.session then
         menu:addOption("Start wall practice here (sports racket + ball in hands)",
@@ -237,13 +233,17 @@ local function contextMenu(playerIndex, context, objects, test)
     for _, court in pairs(C.courts) do
         if court.id and court.x1 and court.y1 and court.z == math.floor(p:getZ())
             and math.abs(p:getX() - court.x1) < 100 and math.abs(p:getY() - court.y1) < 100 then
-            if court.mode=="tennis" then menu:addOption("Join " .. tostring(court.id) .. " (" .. tostring(court.mode) .. ")", court.id, join) end
+            if court.mode=="tennis" then
+                menu:addOption("Join " .. tostring(court.id) .. " (" .. tostring(court.mode) .. ")",court.id,join)
+                if not C.session then menu:addOption("Solo test: fixed return target",court.id,startSolo) end
+            end
             menu:addOption("Remove " .. tostring(court.id) .. " (owner/admin, idle)", court.id, removeCourt)
             count = count + 1
             if count >= 20 then break end
         end
     end
     if C.session then
+        if C.core and C.core.testTarget then menu:addOption("Test: send a ball from opponent side",nil,feed) end
         menu:addOption("Serve [K]", "serve", input)
         menu:addOption("Swing [J]", "swing", input)
         menu:addOption("Leave court", nil, leave)
@@ -318,10 +318,31 @@ function Overlay:worldLine(x1,y1,x2,y2,z,r,g,b)
 end
 function Overlay:render()
     local core = C.core
+    if not core and player() then
+        for _,court in pairs(C.courts) do
+            if court.x2 and court.y2 and court.z==math.floor(player():getZ()) then
+                self:worldLine(court.x1,court.y1,court.x2,court.y1,court.z,0.6,0.8,1)
+                self:worldLine(court.x2,court.y1,court.x2,court.y2,court.z,0.6,0.8,1)
+                self:worldLine(court.x2,court.y2,court.x1,court.y2,court.z,0.6,0.8,1)
+                self:worldLine(court.x1,court.y2,court.x1,court.y1,court.z,0.6,0.8,1)
+                self:worldLine(court.x1,(court.y1+court.y2)/2,court.x2,(court.y1+court.y2)/2,court.z,0.3,0.8,1)
+            end
+        end
+    end
     if core and player() then
         local court = core.court
         local x1,y1,x2,y2,z = court.x1,court.y1,court.x2,court.y2,court.z
         if math.floor(player():getZ()) == z then
+            local target=core.testTarget
+            if target then
+                for i=0,15 do
+                    local a,b=i*math.pi/8,(i+1)*math.pi/8
+                    self:worldLine(target.x+math.cos(a)*target.radius,target.y+math.sin(a)*target.radius,
+                        target.x+math.cos(b)*target.radius,target.y+math.sin(b)*target.radius,z,1,0.75,0.15)
+                end
+                local tx,ty=project(target.x,target.y,z)
+                self:drawText("TEST RETURN TARGET",tx-65,ty-25,1,0.8,0.2,1,UIFont.Small)
+            end
             local mx,my = (x1+x2)/2,(y1+y2)/2
             if court.mode == "tennis" then
                 self:worldLine(x1,y1,x2,y1,z,1,1,1)
@@ -363,7 +384,7 @@ function Overlay:render()
         local function line(text,row,r,g,b)
             self:drawText(text,x+10,y+8+row*21,r or 1,g or 1,b or 1,1,UIFont.Small)
         end
-        line("Playable Tennis | " .. court.mode .. " | Slot " .. tostring(C.slot),0)
+        line("Playable Tennis | " .. (core.testTarget and "SOLO TEST" or court.mode) .. " | Slot " .. tostring(C.slot),0)
         line("Games " .. core.games[1] .. " : " .. core.games[2] .. "    " .. score(core) .. "    " .. core.phase,1)
         if court.mode == "wall" then
             line("Rally " .. tostring(core.rally) .. " | Best " .. tostring(core.bestRally)
@@ -380,7 +401,8 @@ function Overlay:render()
         line(court.mode == "wall" and ("Depth " .. tostring(y2-y1) .. " tiles | Hold ball + RMB/LMB to restart.")
             or "Serve near baseline, " .. side .. " half.",4)
         line(tostring(C.waiting and "Waiting for opponent - tennis input disabled" or core.message or ""),5,0.7,0.9,1)
-        line("Right-click > Playable Tennis: courts / leave / sync",6)
+        line(core.testTarget and "Right-click menu: opponent feed (ready) / leave"
+            or "Right-click > Playable Tennis: courts / leave / sync",6)
         if now() < (C.flashUntil or 0) then
             self:drawRect(x+470,y+10,10,10,1,1,0.8,0.2)
         end
@@ -400,6 +422,7 @@ local function tick()
     if C.session and now() - C.lastSync > 5000 and now() - (C.receivedAt or 0) > 1500 then sync() end
 end
 local function start()
+    PTCourtSelector.cancel()
     releaseGuard(true)
     if C.overlay then C.overlay:removeFromUIManager() end
     C.session, C.core, C.previousBall, C.draft = nil, nil, nil, nil
@@ -416,6 +439,7 @@ local function start()
     sync()
 end
 local function stop()
+    PTCourtSelector.cancel()
     releaseGuard(true)
     if C.session then C.retired[C.session]=true end
     C.session,C.core,C.previousBall=nil,nil,nil

@@ -31,6 +31,8 @@ if ($LASTEXITCODE -ne 0) { throw 'Client tests failed' }
 if ($LASTEXITCODE -ne 0) { throw 'Per-frame ball rendering tests failed' }
 & $java -cp $cp LuaHarness (Join-Path $repo 'tests/swing-bootstrap.lua') (Join-Path $mod 'media/lua/client/PT_Swing.lua') (Join-Path $repo 'tests/swing.test.lua')
 if ($LASTEXITCODE -ne 0) { throw 'Cosmetic swing tests failed' }
+& $java -cp $cp LuaHarness (Join-Path $repo 'tests/selector-bootstrap.lua') (Join-Path $mod 'media/lua/client/PT_CourtSelector.lua') (Join-Path $repo 'tests/selector.test.lua')
+if ($LASTEXITCODE -ne 0) { throw 'Court rectangle selection tests failed' }
 & $java -cp $cp LuaHarness (Join-Path $repo 'tests/items-bootstrap.lua') (Join-Path $mod 'media/lua/shared/PT_ConvertRacket.lua') (Join-Path $mod 'media/lua/client/PT_RacketMenu.lua') (Join-Path $repo 'tests/items.test.lua')
 if ($LASTEXITCODE -ne 0) { throw 'Racket conversion tests failed' }
 $lua = @(Get-ChildItem (Join-Path $mod 'media/lua') -Recurse -Filter '*.lua' | ForEach-Object FullName)

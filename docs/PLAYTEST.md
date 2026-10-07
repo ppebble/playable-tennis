@@ -14,3 +14,6 @@ Use a disposable test profile and identical snapshot files on server and both cl
 - Check floor markers, cursor alignment, ball movement at different zooms/resolutions and wall reflection with video. Record any residual visual pause or packet-loss freeze separately from actual FPS.
 
 Record game build, Git commit, settings, steps, logs and screenshots/video. A mocked test never completes a live checklist item. Use test profiles rather than changing production saves for this checklist.
+
+- Select a rectangle forwards/backwards; verify dimensions, red invalid preview, Escape/rightclick, no leaked swing. Invalid replacement retains old court; valid replacement ends old match and leaves exactly one registered court. Other wall practice continues.
+- Start Solo test, observe fixed far-left target, request opponent feed while ready, return into/outside target range and check ordinary scores. Feed during rally must fail. Normal Join cannot enter a test session; normal1v1 still waits for two real participants. This is not live network proof.

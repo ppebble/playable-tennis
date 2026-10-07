@@ -1,5 +1,9 @@
 function require() end
 ClientMock = {time=10000,sent={},focused=false,draws={},buttons={}}
+PTCourtSelector={isActive=function() return ClientMock.selecting or false end,
+    blocksInput=function() return ClientMock.selecting or ClientMock.selectionCooldown or false end,
+    cancel=function() ClientMock.selecting=false end,
+    begin=function(p,callback) ClientMock.selecting=true; ClientMock.selectCourt=callback end}
 PTSwing={play=function() ClientMock.swings=(ClientMock.swings or 0)+1 end}
 function getSoundManager() return {playUISound=function(_,name) ClientMock.sound=name end} end
 function getTimestampMs() return ClientMock.time end

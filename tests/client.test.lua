@@ -51,8 +51,10 @@ local square={getX=function() return 1 end,getY=function() return 2 end,getZ=fun
 local menu=ClientMock.menu()
 Events.OnFillWorldObjectContextMenu.callback(0,menu,{{getSquare=function() return square end}},false)
 menu.submenu.options[1].callback(menu.submenu.options[1].target,menu.submenu.options[1].arg)
-menu.submenu.options[2].callback(menu.submenu.options[2].target,menu.submenu.options[2].arg)
-check(PTClient.draft[1].x==1 and PTClient.draft[2].y==2,'context corners use selected square')
+check(ClientMock.selecting,'context begins one rectangle selection workflow')
+ClientMock.selectCourt({x1=1,y1=2,x2=9,y2=20,z=0,mode='tennis'})
+check(ClientMock.sent[#ClientMock.sent-1].command=='create','rectangle confirmation submits one create request')
+PTCourtSelector.cancel()
 local join
 for _,o in ipairs(menu.submenu.options) do if o.name=='Join court (tennis)' then join=o end end
 check(join~=nil,'nearby saved court exposed in menu')
@@ -196,4 +198,31 @@ for _,mode in ipairs({'wall','tennis'}) do
     check(#ClientMock.sent==before,mode..' missed point resets RMB requirement')
     PTClient.receive('left',{session=id})
 end
+PTClient.receive('list',{courts={{id='solo-court',x1=0,y1=0,x2=8,y2=18,z=0,mode='tennis'}}})
+local soloMenu=ClientMock.menu()
+Events.OnFillWorldObjectContextMenu.callback(0,soloMenu,{{getSquare=function() return square end}},false)
+local soloOption
+for _,o in ipairs(soloMenu.submenu.options) do if o.name=='Solo test: fixed return target' then soloOption=o end end
+check(soloOption~=nil,'solo test available for saved court')
+soloOption.callback(soloOption.target)
+check(last().command=='startSolo' and last().args.id=='solo-court','solo option sends explicit test mode')
+local targetState=snapshot(1,'ready',nil,'solo-ui')
+targetState.core.testTarget={x=2.4,y=16,radius=1.8}
+PTClient.receive('state',targetState)
+soloMenu=ClientMock.menu()
+Events.OnFillWorldObjectContextMenu.callback(0,soloMenu,{{getSquare=function() return square end}},false)
+local feedOption
+for _,o in ipairs(soloMenu.submenu.options) do if o.name=='Test: send a ball from opponent side' then feedOption=o end end
+check(feedOption~=nil,'test-only opponent feed menu visible')
+feedOption.callback()
+check(last().command=='feed' and last().args.session=='solo-ui','feed carries current session and sequence')
+ClientMock.buttons={}; ClientMock.lines={}; PTClient.overlay:render()
+check(#ClientMock.lines==24,'target reach circle drawn with rectangular court')
+PTCourtSelector.begin(p,function() end); before=#ClientMock.sent
+ClientMock.buttons={[0]=true,[1]=true}; click(); Events.OnKeyPressed.callback(Keyboard.KEY_K)
+check(#ClientMock.sent==before,'selection does not send sports mouse or keyboard commands')
+PTCourtSelector.cancel()
+ClientMock.selectionCooldown=true; before=#ClientMock.sent; click()
+check(#ClientMock.sent==before,'selection completion click cannot trigger a sports stroke')
+ClientMock.selectionCooldown=false
 print('PASS client checks: '..checks)

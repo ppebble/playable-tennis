@@ -232,6 +232,29 @@ function PTCore.swing(s, slot, px, py, aim)
     s.message = "Return hit."
     return true
 end
+-- Explicit test fixture, never enabled by normal match creation.
+function PTCore.enableTestTarget(s)
+    if s.court.mode ~= "tennis" or s.phase ~= "ready" then return false end
+    local c = s.court
+    s.testTarget = {x = midX(s) - (c.x2-c.x1)*0.2, y = c.y2-2, radius = s.options.hitRadius}
+    return true
+end
+function PTCore.feedTestTarget(s)
+    if not s.testTarget or s.phase ~= "ready" then return false end
+    -- A deliberate test-only feed may substitute the scheduled server.
+    s.server = 2
+    s.faults = 0
+    local even = (s.points[1]+s.points[2])%2 == 0
+    local x = midX(s)+(even and 1 or -1)*(s.court.x2-s.court.x1)*0.25
+    return PTCore.serve(s,2,x,s.court.y2,0)
+end
+local function returnFromTestTarget(s)
+    local target,b = s.testTarget,s.ball
+    if not target or not b or s.phase ~= "rally" or s.lastHit ~= 1 or s.servicePending then return end
+    if b.y <= midY(s) or b.z < 0.15 or b.z > 2.4 or s.clock-s.lastSwing[2] < 0.25 then return end
+    if (target.x-b.x)^2+(target.y-b.y)^2 > s.options.hitRadius^2 then return end
+    PTCore.swing(s,2,target.x,target.y,0)
+end
 function PTCore.step(s, dt)
     if not finite(dt) or dt <= 0 then return end
     -- Avoid an unbounded catch-up loop after stalls; server publishes fresh state.
@@ -239,7 +262,7 @@ function PTCore.step(s, dt)
     while s.accumulator + 0.000000001 >= STEP do
         s.accumulator = s.accumulator - STEP
         s.clock = s.clock + STEP
-        if s.phase == "rally" then integrate(s, STEP) end
+        if s.phase == "rally" then integrate(s, STEP); returnFromTestTarget(s) end
     end
 end
 function PTCore.snapshot(s) return copy(s) end
