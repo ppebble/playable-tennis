@@ -278,7 +278,7 @@ S.tick(); M.square(100,103,0).solid=true
 M.time=M.time+100; S.tick()
 check(s.core.phase=="ready" and not s.core.ball,"authoritative practice trajectory stops at a new solid obstacle")
 M.reset(); a=M.player("alpha",100.5,104)
-M.square(100,102,0).solid=true
+M.square(100,101,0).solid=true
 id,s=startWall(a)
 check(s and s.core.phase=="rally","wall start chooses clear side target when centre route blocked")
 M.reset(); a=M.player("alpha",105,114)

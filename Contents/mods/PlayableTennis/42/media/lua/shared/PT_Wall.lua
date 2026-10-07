@@ -50,7 +50,7 @@ function W.toWorld(c,x,y)
     return f.originX+x*f.ux+y*f.vx,f.originY+x*f.uy+y*f.vy
 end
 function W.localBounds(c,y)
-    local flare=c.freeWall and math.max(0,math.min(14,y))/14*4 or 0
+    local flare=c.freeWall and math.max(0,math.min(14,y))/14*2 or 0
     return c.x1-flare,c.x2+flare
 end
 function W.containsLocal(c,x,y,margin)
@@ -143,7 +143,7 @@ function W.select(px,py,z,args,getSquare)
         wall={tilex=x,tiley=y,edge=edge,minOffset=0,maxOffset=0}}
     c.x1,c.x2=-2,2
     for _,direction in ipairs({-1,1}) do
-        for n=1,4 do
+        for n=1,2 do
             local offset=n*direction
             if not solidWall(getSquare(x+(edge=="N" and offset or 0),y+(edge=="W" and offset or 0),z),edge) then break end
             if direction<0 then c.wall.minOffset=offset else c.wall.maxOffset=offset end

@@ -259,8 +259,8 @@ for _,speed in ipairs({5,9,14}) do
 end
 local sideReturn=PTCore.new(practice)
 sideReturn.phase,sideReturn.wallReady,sideReturn.clock="rally",true,2
-sideReturn.ball={x=5.4,y=13.2,z=1.4,vx=0,vy=1,vz=0}
-check(PTCore.swing(sideReturn,1,5.8,14,-1),"side ball can be returned at far trapezoid edge")
+sideReturn.ball={x=3.4,y=13.2,z=1.4,vx=0,vy=1,vz=0}
+check(PTCore.swing(sideReturn,1,3.8,14,-1),"side ball can be returned at far trapezoid edge")
 check(checkWallReflection(sideReturn),"diagonal swing from fourteen reflects without retargeting")
 local outside=PTCore.new(practice)
 check(not PTCore.serve(outside,1,0,14.01,0),"serve cannot extend normal depth past fourteen")
@@ -462,4 +462,18 @@ for _,height in ipairs({.15,.5,1.2,2.4}) do
         local apex=b.z+math.max(0,b.vz)^2/(2*9.8)
         check(apex<=2.400001,"net clearance cannot override the trajectory height cap")
     end
+end
+
+-- Narrow-wall extreme aim halves the outgoing diagonal spread; reflection
+-- still preserves tangent speed instead of bending the ball back at the user.
+local narrowWall={mode="wall",freeWall=true,x1=-2.5,x2=2.5,y1=0,y2=14,z=0,wallMinX=-2.5,wallMaxX=2.5}
+for _,aim in ipairs({-1,1}) do
+    local state=PTCore.new(narrowWall)
+    local tx,ty=PTCore.aimTarget(state,1,aim,true)
+    check(near(tx,aim*1.75) and ty==0,"five-tile wall bounds extreme aim to1.75")
+    check(PTCore.serve(state,1,0,8,aim),"narrow-wall extreme serve launches")
+    local b=state.ball
+    local projected=b.x+b.vx*(2*b.y/math.abs(b.vy))
+    check(near(projected,aim*3.5),"same-depth reflected direction spreads only3.5 tiles from center")
+    check(checkWallReflection(state),"narrow-wall extreme shot preserves physical reflection")
 end

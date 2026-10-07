@@ -111,7 +111,7 @@ check(facade.wallMaxX-facade.wallMinX==2,"two solid facade tiles stop at window 
 setup("N")
 for x=8,13 do square(x,10,0).flags.WallN=true end
 local wide=PTWall.select(10.5,14,0,{x=10,y=10,edge="N"},square)
-check(wide.wallMaxX-wide.wallMinX==6,"six contiguous wall tiles retained")
+check(wide.wallMaxX-wide.wallMinX==5,"long wall is capped at five selected tiles")
 for _,distance in ipairs({1,2,8,14}) do
     local depthCourt=PTWall.select(10.5,10+distance,0,{x=10,y=10,edge="N"},square)
     check(depthCourt and depthCourt.y2==14,"practice depth independent of starting distance "..distance)
@@ -120,9 +120,9 @@ local trap=PTWall.select(10.5,24,0,{x=10,y=10,edge="N"},square)
 local left,right=PTWall.localBounds(trap,0)
 check(left==trap.x1 and right==trap.x2,"wall end has unchanged baseline width")
 left,right=PTWall.localBounds(trap,7)
-check(left==trap.x1-2 and right==trap.x2+2,"mid depth adds two tiles per side")
+check(left==trap.x1-1 and right==trap.x2+1,"mid depth adds one tile per side")
 left,right=PTWall.localBounds(trap,14)
-check(left==trap.x1-4 and right==trap.x2+4,"rear adds four tiles per side")
+check(left==trap.x1-2 and right==trap.x2+2,"rear adds two tiles per side")
 check(PTWall.containsLocal(trap,right,14,0),"rear corner can return ball")
 check(not PTWall.containsLocal(trap,right+0.01,14,0),"outside trapezoid rejected")
 check(not PTWall.containsLocal(trap,0,14.01,0),"perpendicular depth beyond fourteen rejected")
@@ -141,3 +141,19 @@ check(PTWall.valid(openEnd,square,13.5,16),"open endpoint remains usable around 
 local blockedEnd,why=PTWall.select(13.5,16,0,{x=10,y=10,edge="N"},square)
 check(blockedEnd~=nil and why==nil,"selection uses open endpoint too")
 print("PASS wall geometry checks: "..checks)
+
+-- A long facade must not widen aim or the receiving area without bound.
+for _,edge in ipairs({"N","W"}) do
+    for _,side in ipairs({-1,1}) do
+        setup(edge)
+        for offset=-8,8 do
+            square(10+(edge=="N" and offset or 0),10+(edge=="W" and offset or 0),0).flags["Wall"..edge]=true
+        end
+        local px,py=10+(edge=="N" and .5 or side*14),10+(edge=="W" and .5 or side*14)
+        local capped=PTWall.select(px,py,0,{x=10,y=10,edge=edge},square)
+        check(capped and capped.wallMaxX-capped.wallMinX==5,"all four wall faces cap reflection span at five")
+        local lo,hi=PTWall.localBounds(capped,14)
+        check(hi-lo==9,"maximum rear width is nine tiles")
+        check(not PTWall.containsLocal(capped,hi+.01,14),"former wider side area is outside practice")
+    end
+end
