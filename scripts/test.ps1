@@ -59,6 +59,7 @@ if ($itemScript -notmatch 'ItemType\s*=\s*base:normal\s*,' -or $itemScript -matc
 foreach ($property in @('Icon','StaticModel','WorldStaticModel')) {
     if ($itemScript -notmatch "$property\s*=\s*TennisRacket\s*,") { throw "Missing native racket appearance: $property" }
 }
+if ($itemScript -notmatch 'AttachmentType\s*=\s*Racket\s*,') { throw 'Sports racket must use the native racket equipment attachment type' }
 foreach ($property in @('PrimaryAnimMask','SecondaryAnimMask')) {
     if ($itemScript -notmatch "$property\s*=\s*PT_TennisRacket\s*,") { throw "Missing normal-item hand model mask: $property" }
 }

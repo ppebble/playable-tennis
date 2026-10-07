@@ -12,6 +12,9 @@ end
 function PT_SwingAction:start()
     self.action:setUseProgressBar(false)
     self.action:setBlockMovementEtc(false)
+    -- PlayerActionsState hides non-weapon hands. Keep the actual equipped
+    -- items as this action's models before its remote-animation snapshot.
+    self:setOverrideHandModels(self.character:getPrimaryHandItem(), self.character:getSecondaryHandItem())
     self:setAnimVariable("PT_RacketStroke", true)
     self:setActionAnim("RemoveBushLongBlade")
     -- Log the first started action, not merely a click queued by the client.

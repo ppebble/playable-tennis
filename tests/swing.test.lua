@@ -1,7 +1,10 @@
 checks=0
 local function check(value,label) checks=checks+1; if not value then error(label) end end
 local p={kind="PlayableTennis.SportsTennisRacket"}
-function p:getPrimaryHandItem() return {getFullType=function() return self.kind end} end
+local racket={getFullType=function() return p.kind end}
+local ball={getFullType=function() return 'Base.TennisBall' end}
+function p:getPrimaryHandItem() return racket end
+function p:getSecondaryHandItem() return self.noBall and nil or ball end
 function p:isDead() return self.dead end
 function p:getVehicle() return self.vehicle end
 function p:getVariableString(name) return name=="PerformingAction" and "RemoveBushLongBlade" or "holdingbagright" end
@@ -11,6 +14,8 @@ action.action={setUseProgressBar=function(self,value) self.progress=value end,
     setBlockMovementEtc=function(self,value) self.block=value end}
 action:start()
 check(action.anim=="RemoveBushLongBlade" and not action.models,"native one-handed animation without hand model substitution")
+check(action.handModels.primary==racket and action.handModels.secondary==ball,"stroke retains actual equipped racket and ball models")
+check(action.modelsAtAnim==action.handModels,"hand models set before remote animation snapshot")
 check(action.variables.PT_RacketStroke==true,"owned movement mask is scoped to tennis action")
 action:animEvent("Chop",nil)
 check(action.anim=="RemoveBushLongBlade" and not PT_SwingAction.complete,"native chop event has no world mutation callback")

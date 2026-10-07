@@ -6,6 +6,7 @@ module PlayableTennis
         ItemType = base:normal,
         Weight = 1.0,
         Icon = TennisRacket,
+        AttachmentType = Racket,
         ConditionMax = 4,
         StaticModel = TennisRacket,
         WorldStaticModel = TennisRacket,
