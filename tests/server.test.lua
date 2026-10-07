@@ -314,5 +314,69 @@ check(not S.members.alpha and not S.sessions[id] and not db().courts[id],"valid 
 M.reset(); a=M.player("alpha"); local wallId,wallSession=startWall(a)
 b=M.player("beta"); create(b)
 check(S.sessions[wallId]==wallSession and S.members.alpha==wallSession,"replacement preserves free wall session")
+-- Readiness is checked using live receiver state, including between retries.
+for servingSlot=1,2 do
+    for parity=0,1 do
+        a,id,s=setup("tennis")
+        b=M.player("beta",106,120); command(b,"join",{id=id})
+        s.core.server=servingSlot; s.core.points[1]=parity
+        local server=servingSlot==1 and a or b
+        local receiver=servingSlot==1 and b or a
+        local serveArea=PTCore.serveArea(s.core,servingSlot)
+        local receiveArea=PTCore.receiveArea(s.core,servingSlot)
+        server.x,server.y=(serveArea.x1+serveArea.x2)/2,serveArea.baseline
+        receiver.x,receiver.y=receiveArea.x,receiveArea.y
+        command(server,"sync",{})
+        check(s.core.receiverReady and s.core.receiveSlot==3-servingSlot,"snapshot publishes correct ready receiver")
+        M.players={server}
+        input(server,s,1)
+        check(s.core.phase=="ready" and not s.core.receiverReady,"disconnected receiver cannot be ready before audit")
+        M.players={a,b}
+        local sequence=2
+        for _,cause in ipairs({"wrongHalf","net","behindBaseline","floor","dead","vehicle","broken","missing","vanilla"}) do
+            receiver.x,receiver.y,receiver.z=receiveArea.x,receiveArea.y,0
+            receiver.dead,receiver.vehicle,receiver.condition,receiver.racket,receiver.itemType=false,nil,10,true,nil
+            if cause=="wrongHalf" then receiver.x=208-receiver.x
+            elseif cause=="net" then receiver.y=110
+            elseif cause=="behindBaseline" then receiver.y=servingSlot==1 and 121.6 or 98.4
+            elseif cause=="floor" then receiver.z=1
+            elseif cause=="dead" then receiver.dead=true
+            elseif cause=="vehicle" then receiver.vehicle={}
+            elseif cause=="broken" then receiver.condition=0
+            elseif cause=="missing" then receiver.racket=false
+            else receiver.itemType="Base.TennisRacket" end
+            input(server,s,sequence); sequence=sequence+1
+            check(s.core.phase=="ready" and not s.core.ball and not s.core.receiverReady,"live receiver gate rejects "..cause)
+            check(s.core.points[1]==parity and s.core.points[2]==0 and s.core.faults==0,"receiver rejection does not consume a fault or point")
+        end
+        receiver.x,receiver.y,receiver.z=receiveArea.x,receiveArea.y,0
+        receiver.dead,receiver.vehicle,receiver.condition,receiver.racket,receiver.itemType=false,nil,10,true,nil
+        input(server,s,sequence); sequence=sequence+1
+        check(s.core.phase=="rally","positioned receiver unlocks serve for either server and parity")
+        s.core.ball.z=-1; PTCore.step(s.core,1/120)
+        check(s.core.phase=="ready" and s.core.faults==1,"first fault produces retry fixture")
+        receiver.x=208-receiver.x
+        input(server,s,sequence); sequence=sequence+1
+        check(s.core.phase=="ready" and s.core.faults==1,"receiver must return to receive area for second serve")
+        receiver.x=receiveArea.x
+        input(server,s,sequence)
+        check(s.core.phase=="rally" and s.core.faults==1,"ready receiver unlocks second serve without clearing fault")
+    end
+end
+M.reset(); a=M.player("alpha"); id=create(a)
+command(a,"startSolo",{id=id}); s=S.members.alpha
+local before=PTCore.snapshot(s.core)
+a.x=106
+command(a,"feed",{session=s.id,seq=1,aim=0})
+check(s.core.phase=="ready" and not s.core.ball and s.core.server==before.server and s.core.faults==before.faults,"feed rejects unpositioned tester before changing scheduled server")
+local receiveArea=PTCore.receiveArea(s.core,2)
+a.x,a.y=receiveArea.x,receiveArea.y
+command(a,"feed",{session=s.id,seq=2,aim=0})
+check(s.core.phase=="rally" and s.core.lastHit==2,"positioned tester unlocks feed")
+check(s.core.testTarget.x==s.core.ball.x and s.core.testTarget.y==s.core.court.y2,"feed target depicts actual opposite server")
+S.tick(); M.time=M.time+700; S.tick()
+receiveArea=PTCore.receiveArea(s.core,1)
+check(s.core.phase=="ready" and s.core.testTarget.x==receiveArea.x and s.core.testTarget.y==receiveArea.y,"stall let repositions solo target for human serve")
+check(s.core.receiverReady,"solo target is immediately ready after let")
 checks=(checks or 0)+count
 print("SERVER PASS: "..count.." behavioral checks")

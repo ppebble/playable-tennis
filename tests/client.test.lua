@@ -206,7 +206,7 @@ PTClient.receive('list',{courts={{id='solo-court',x1=0,y1=0,x2=8,y2=18,z=0,mode=
 local soloMenu=ClientMock.menu()
 Events.OnFillWorldObjectContextMenu.callback(0,soloMenu,{{getSquare=function() return square end}},false)
 local soloOption
-for _,o in ipairs(soloMenu.submenu.options) do if o.name=='Solo test: fixed return target' then soloOption=o end end
+for _,o in ipairs(soloMenu.submenu.options) do if o.name=='Solo test: diagonal return target' then soloOption=o end end
 check(soloOption~=nil,'solo test available for saved court')
 soloOption.callback(soloOption.target)
 check(last().command=='startSolo' and last().args.id=='solo-court','solo option sends explicit test mode')
@@ -221,8 +221,13 @@ for _,o in ipairs(soloMenu.submenu.options) do if o.name=='Test: send a ball fro
 check(feedOption~=nil,'test-only opponent feed menu visible')
 feedOption.callback()
 check(last().command=='feed' and last().args.session=='solo-ui','feed carries current session and sequence')
+PTClient.core.feedReceiverReady=false; before=#ClientMock.sent
+feedOption.callback()
+check(#ClientMock.sent==before and string.find(PTClient.message,'blue return area',1,true),'solo feed waits for tester to enter receive area')
+PTClient.core.feedReceiverReady=true; feedOption.callback()
+check(#ClientMock.sent==before+1 and last().command=='feed','solo feed enabled after tester is ready')
 ClientMock.buttons={}; ClientMock.lines={}; PTClient.overlay:render()
-check(#ClientMock.lines==28,'target reach circle and serve box drawn with rectangular court')
+check(#ClientMock.lines==32,'target reach circle, serve box and feed receive area drawn with rectangular court')
 check(ClientMock.lines[25].x==17 and ClientMock.lines[25].y==-6.5,'solo serve box uses north baseline and west half')
 PTCourtSelector.begin(p,function() end); before=#ClientMock.sent
 ClientMock.buttons={[0]=true,[1]=true}; click(); Events.OnKeyPressed.callback(Keyboard.KEY_K)
@@ -264,4 +269,24 @@ PTCourtSelector.cursor={preview={court={x1=1,y1=2,x2=9,y2=20,z=0},red=0.2,green=
 ClientMock.lines={}; PTClient.overlay:render()
 check(#ClientMock.lines==11,'selection adds four outline edges without a filled area')
 PTCourtSelector.cursor=nil
+PTClient.receive('left',{session='wall-boundary'})
+PTClient.receive('list',{courts={}})
+local receiverState=snapshot(1,'ready',nil,'receiver-ready')
+receiverState.core.receiverReady=false
+PTClient.receive('state',receiverState)
+ClientMock.buttons={[0]=true,[1]=true}
+before=#ClientMock.sent
+local swingsBefore=ClientMock.swings or 0
+click()
+check(#ClientMock.sent==before and (ClientMock.swings or 0)==swingsBefore,'waiting receiver suppresses serve and cosmetic stroke')
+check(string.find(PTClient.message,'Waiting for the receiver',1,true),'receiver readiness failure is visible')
+ClientMock.buttons={}; ClientMock.lines={}; PTClient.overlay:render()
+check(#ClientMock.lines==16,'ready normal match displays serving and diagonal receiving areas')
+receiverState=snapshot(2,'ready',nil,'receiver-ready'); receiverState.core.receiverReady=true
+PTClient.receive('state',receiverState)
+ClientMock.buttons={[0]=true,[1]=true}; click()
+check(#ClientMock.sent==before+1 and last().command=='serve','fresh receiver ready state enables serve')
+receiverState=snapshot(3,'ready',nil,'receiver-ready'); receiverState.core.receiverReady=false
+PTClient.receive('state',receiverState); before=#ClientMock.sent; click()
+check(#ClientMock.sent==before,'receiver leaving ready area blocks the next serve')
 print('PASS client checks: '..checks)

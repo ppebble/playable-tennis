@@ -270,7 +270,7 @@ check(not PTCore.swing(outside,1,6.4,14,0),"swing outside trapezoid is rejected"
 local solo = new()
 check(not PTCore.feedTestTarget(solo), "normal match cannot feed")
 check(PTCore.enableTestTarget(solo), "tennis enables explicit target")
-check(solo.testTarget.x < 4 and solo.testTarget.y == 16, "target far left fixed position")
+check(solo.testTarget.x > 4 and solo.testTarget.y == 13.5, "target starts in diagonal receiving half")
 check(PTCore.feedTestTarget(solo) and solo.server == 2 and solo.servicePending, "feed uses legal slot two serve")
 check(not PTCore.feedTestTarget(solo), "feed cannot interrupt rally")
 local restart = new()
@@ -302,7 +302,7 @@ local rallyTest=new()
 PTCore.enableTestTarget(rallyTest)
 rallyTest.phase,rallyTest.lastHit,rallyTest.clock="rally",2,1
 rallyTest.ball={x=4,y=3,z=1.2,vx=0,vy=0,vz=0}
-check(PTCore.swing(rallyTest,1,4,3,-2/3),"player aims normal shot at fixed target")
+check(PTCore.swing(rallyTest,1,4,3,2/3),"player aims normal shot at fixed target")
 for i=1,600 do
     PTCore.step(rallyTest,1/120)
     if rallyTest.lastHit==2 or rallyTest.phase~="rally" then break end
@@ -321,5 +321,42 @@ for slot=1,2 do
         check(string.find(serveState.message,"green serve box",1,true),"rejection identifies visible serve destination")
         check(not serveState.ball,"rejected serve cannot create a ball")
         check(PTCore.serve(serveState,slot,x,area.baseline,0),"highlighted service box starts serve")
+    end
+end
+
+-- Receive geometry follows the serving slot and total point parity.
+for slot=1,2 do
+    for parity=0,1 do
+        local state=new(); state.points[1]=parity
+        local area=PTCore.receiveArea(state,slot)
+        local service=PTCore.serveArea(state,slot)
+        check((area.x>4)==service.left,"receiver occupies diagonal half for each serving slot and parity")
+        check(PTCore.receiverInArea(state,slot,area.x,area.y),"receive marker is a valid ready position")
+        check(not PTCore.receiverInArea(state,slot,8-area.x,area.y),"other receiving half is not ready")
+        check(not PTCore.receiverInArea(state,slot,area.x,9),"receiver at net is not ready")
+        check(not PTCore.receiverInArea(state,slot,area.x,slot==1 and 19.51 or -1.51),"receiver behind allowed baseline margin is not ready")
+    end
+end
+for _,length in ipairs({12,18,30}) do
+    for _,speed in ipairs({6,9,14}) do
+        for parity=0,1 do
+            local state=PTCore.new({x1=0,x2=8,y1=0,y2=length,mode="tennis"},{ballSpeed=speed})
+            state.points[1]=parity; PTCore.enableTestTarget(state)
+            local area=PTCore.serveArea(state,1)
+            check(PTCore.serve(state,1,(area.x1+area.x2)/2,0,0),"solo center serve launches")
+            local tx,ty=state.testTarget.x,state.testTarget.y
+            local returned,stationary=false,true
+            for i=1,1200 do
+                PTCore.step(state,1/120)
+                if state.lastHit==2 then returned=true; break end
+                if state.phase~="rally" then break end
+                stationary=stationary and state.testTarget.x==tx and state.testTarget.y==ty
+            end
+            check(returned,"real center serve reaches diagonal target for both sides across supported lengths/speeds")
+            check(stationary,"solo target remains fixed throughout rally")
+            for i=1,1800 do PTCore.step(state,1/120) end
+            area=PTCore.receiveArea(state,1)
+            check(state.phase=="ready" and state.testTarget.x==area.x and state.testTarget.y==area.y,"point reset updates target to next service diagonal")
+        end
     end
 end

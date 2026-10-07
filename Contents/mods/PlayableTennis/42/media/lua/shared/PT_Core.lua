@@ -27,6 +27,7 @@ local function resetBall(s, message)
     s.servicePending, s.wallReady = false, false
     s.rally = 0
     s.message = message
+    if s.testTarget then PTCore.refreshTestTarget(s) end
 end
 local function point(s, winner, reason)
     s.points[winner] = s.points[winner] + 1
@@ -213,6 +214,10 @@ function PTCore.serve(s, slot, px, py, aim)
     end
     local tx, ty = PTCore.aimTarget(s, slot, aim, true)
     s.server = slot
+    if s.testTarget then
+        PTCore.refreshTestTarget(s)
+        if slot == 2 then s.testTarget.x,s.testTarget.y=px,baseline end
+    end
     launch(s, px, baseline + ((wall or slot == 2) and -0.1 or 0.1), 1.4, tx, ty, wall)
     s.phase, s.lastHit, s.bounces = "rally", slot, 0
     s.servicePending, s.serveFromLeft, s.wallReady = not wall, fromLeft, false
@@ -249,11 +254,31 @@ function PTCore.swing(s, slot, px, py, aim)
     s.message = "Return hit."
     return true
 end
+-- Shared diagonal receiving half, from the service line to behind the baseline.
+function PTCore.receiveArea(s, servingSlot)
+    local serve=PTCore.serveArea(s,servingSlot)
+    if not serve then return nil end
+    local c=s.court
+    local line=midY(s)+(servingSlot==1 and 1 or -1)*(c.y2-c.y1)/4
+    local x1=serve.left and midX(s)+0.1 or c.x1+0.2
+    local x2=serve.left and c.x2-0.2 or midX(s)-0.1
+    return {x1=x1,x2=x2,y1=servingSlot==1 and line or c.y1-1.5,
+        y2=servingSlot==1 and c.y2+1.5 or line,x=(x1+x2)/2,y=line}
+end
+function PTCore.receiverInArea(s, servingSlot, x, y)
+    local a=PTCore.receiveArea(s,servingSlot)
+    return a~=nil and finite(x) and finite(y) and x>=a.x1 and x<=a.x2 and y>=a.y1 and y<=a.y2
+end
+function PTCore.refreshTestTarget(s)
+    if not s.testTarget or s.phase~="ready" then return end
+    local a=PTCore.receiveArea(s,1)
+    s.testTarget.x,s.testTarget.y=a.x,a.y
+end
 -- Explicit test fixture, never enabled by normal match creation.
 function PTCore.enableTestTarget(s)
     if s.court.mode ~= "tennis" or s.phase ~= "ready" then return false end
-    local c = s.court
-    s.testTarget = {x = midX(s) - (c.x2-c.x1)*0.2, y = c.y2-2, radius = s.options.hitRadius}
+    s.testTarget = {radius = s.options.hitRadius}
+    PTCore.refreshTestTarget(s)
     return true
 end
 function PTCore.feedTestTarget(s)

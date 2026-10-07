@@ -184,6 +184,10 @@ local function input(command,selectedAim)
         return
     end
     if command=="serve" and not equippedToStart(player()) then notice("Hold the Tennis Ball in your secondary hand to serve."); return end
+    if command=="serve" and C.core.phase=="ready" and C.core.receiverReady==false then
+        notice("Waiting for the receiver: stand in the blue return area with a sports racket.")
+        return
+    end
     if now() - (C.receivedAt or 0) > 3000 then
         notice("Waiting for server state; syncing...")
         if now() - C.lastSync > 2000 then sync() end
@@ -232,6 +236,7 @@ local function drawCourt()
 end
 local function feed()
     if not C.session or not C.core or not C.core.testTarget or C.core.phase~="ready" or inputBlocked() then return end
+    if C.core.feedReceiverReady==false then notice("Move into the blue return area with a sports racket before requesting a feed."); return end
     C.seq=C.seq+1
     send("feed",{session=C.session,seq=C.seq,aim=0})
 end
@@ -262,7 +267,7 @@ local function contextMenu(playerIndex, context, objects, test)
             and math.abs(p:getX() - court.x1) < 100 and math.abs(p:getY() - court.y1) < 100 then
             if court.mode=="tennis" then
                 menu:addOption("Join " .. tostring(court.id) .. " (" .. tostring(court.mode) .. ")",court.id,join)
-                if not C.session then menu:addOption("Solo test: fixed return target",court.id,startSolo) end
+                if not C.session then menu:addOption("Solo test: diagonal return target",court.id,startSolo) end
             end
             menu:addOption("Remove " .. tostring(court.id) .. " (owner/admin, idle)", court.id, removeCourt)
             count = count + 1
@@ -405,6 +410,15 @@ function Overlay:render()
                     local sx,sy=project((a.x1+a.x2)/2,a.baseline,z)
                     self:drawText("SERVE HERE",sx-35,sy-25,0.2,1,0.4,1,UIFont.Small)
                 end
+                if core.phase=="ready" then
+                    local a=PTCore.receiveArea(core,core.testTarget and 2 or core.server)
+                    self:worldLine(a.x1,a.y1,a.x2,a.y1,z,0.3,0.7,1)
+                    self:worldLine(a.x2,a.y1,a.x2,a.y2,z,0.3,0.7,1)
+                    self:worldLine(a.x2,a.y2,a.x1,a.y2,z,0.3,0.7,1)
+                    self:worldLine(a.x1,a.y2,a.x1,a.y1,z,0.3,0.7,1)
+                    local rx,ry=project(a.x,a.y,z)
+                    self:drawText(core.testTarget and "FEED: RECEIVE HERE" or "RECEIVE HERE",rx-40,ry-25,0.3,0.7,1,1,UIFont.Small)
+                end
             else
                 -- Mark the actual wall foot, not a fractional storey above it.
                 local left,right=court.wallMinX or x1,court.wallMaxX or x2
@@ -446,7 +460,12 @@ function Overlay:render()
         local side = left and "west (lower X)" or "east (higher X)"
         line(court.mode == "wall" and ("Depth " .. tostring(y2-y1) .. " tiles | Hold ball + RMB/LMB to restart.")
             or "Green serve box: " .. (servingSlot==1 and "NORTH" or "SOUTH") .. ", " .. side .. ".",4)
-        line(tostring(C.waiting and "Waiting for opponent - tennis input disabled" or core.message or ""),5,0.7,0.9,1)
+        local readyMessage
+        if court.mode=="tennis" and core.phase=="ready" and core.receiverReady~=nil then
+            readyMessage=core.receiverReady and "Receiver ready - serve when ready."
+                or "Waiting for receiver in blue area with racket."
+        end
+        line(tostring(C.waiting and "Waiting for opponent - tennis input disabled" or readyMessage or core.message or ""),5,0.7,0.9,1)
         line(core.testTarget and "Right-click menu: opponent feed (ready) / leave"
             or "Right-click > Playable Tennis: courts / leave / sync",6)
         if now() < (C.flashUntil or 0) then

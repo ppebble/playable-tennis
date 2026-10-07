@@ -51,7 +51,27 @@ local function wallPath(c,x1,y1,x2,y2)
     local bx,by=PTWall.toWorld(c,x2,math.max(0.02,y2))
     return PTWall.lineClear(ax,ay,bx,by,c.z,squareAt)
 end
+local function receiverReady(s,servingSlot)
+    local core=s.core
+    if core.court.mode~="tennis" then return true end
+    if core.testTarget and servingSlot==1 then
+        return PTCore.receiverInArea(core,1,core.testTarget.x,core.testTarget.y)
+    end
+    local p=s.players[3-servingSlot]
+    local connected=false
+    if isServer() then
+        local players=getOnlinePlayers()
+        for i=0,players:size()-1 do if players:get(i)==p then connected=true; break end end
+    else connected=p~=nil and getSpecificPlayer(0)==p end
+    return connected and p~=nil and not p:isDead() and not p:getVehicle() and p:getZ()==core.court.z
+        and sportsRacket(p) and PTCore.receiverInArea(core,servingSlot,p:getX(),p:getY()) or false
+end
 local function publish(s)
+    PTCore.refreshTestTarget(s.core)
+    local servingSlot=s.core.testTarget and 1 or s.core.server
+    s.core.receiveSlot=3-servingSlot
+    s.core.receiverReady=receiverReady(s,servingSlot)
+    if s.core.testTarget then s.core.feedReceiverReady=receiverReady(s,2) end
     s.revision=s.revision+1
     local names={}
     for i=1,2 do if s.players[i] then names[i]=key(s.players[i]) end end
@@ -206,6 +226,14 @@ function S.dispatch(p,command,args)
     if command=="serve" or command=="feed" then
         if not ballInHand(p) then fail(p,"Hold a Tennis Ball in your secondary hand to serve."); return end
         local ok,why=clearCourt(s.core.court); if not ok then close(s,why); return end
+        if s.core.court.mode=="tennis" and s.core.phase=="ready" then
+            PTCore.refreshTestTarget(s.core)
+            local servingSlot=command=="feed" and 2 or slot
+            if not receiverReady(s,servingSlot) then
+                s.core.message="Receiver must stand in the blue receive area with an intact SPORTS Tennis Racket, alive and on foot."
+                fail(p,s.core.message); publish(s); return
+            end
+        end
     end
     if command=="feed" then
         if not PTCore.feedTestTarget(s.core) then fail(p,"Target feed is available only while ready in solo testing.") end
