@@ -150,7 +150,7 @@ local function list(p)
     local courts={}
     for _,c in pairs(database().courts) do
         if near(p,c,45) and #courts<32 then
-            courts[#courts+1]={id=c.id,x1=c.x1,y1=c.y1,x2=c.x2,y2=c.y2,z=c.z,mode=c.mode,bestRally=c.bestRally or 0}
+            courts[#courts+1]={id=c.id,x1=c.x1,y1=c.y1,x2=c.x2,y2=c.y2,z=c.z,mode=c.mode,owned=c.owner==key(p),bestRally=c.bestRally or 0}
         end
     end
     emit(p,"list",{courts=courts})
@@ -273,9 +273,9 @@ function S.dispatch(p,command,args)
         if not ok then fail(p,why); return end
         -- Validate before replacing this owner's court; never remove another owner's game.
         for _,other in pairs(db.courts) do
-            if other.z==c.z and c.x1<other.x2 and c.x2>other.x1
+            if other.owner~=who and other.z==c.z and c.x1<other.x2 and c.x2>other.x1
                 and c.y1<other.y2 and c.y2>other.y1 then
-                fail(p,"This area overlaps an existing court."); return
+                fail(p,"This area overlaps another player's court."); return
             end
         end
         local owned={}

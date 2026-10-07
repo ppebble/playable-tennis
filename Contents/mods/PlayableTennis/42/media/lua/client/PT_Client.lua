@@ -248,8 +248,8 @@ local function drawCourt()
         if SandboxVars and SandboxVars.PlayableTennis and SandboxVars.PlayableTennis.AllowCourtCreation==false
             and p:getAccessLevel()~="admin" then return false,"Court registration is admin-only." end
         for _,other in pairs(C.courts) do
-            if other.z==c.z and c.x1<other.x2 and c.x2>other.x1 and c.y1<other.y2 and c.y2>other.y1 then
-                return false,"This area overlaps an existing court."
+            if not other.owned and other.z==c.z and c.x1<other.x2 and c.x2>other.x1 and c.y1<other.y2 and c.y2>other.y1 then
+                return false,"This area overlaps another player's court."
             end
         end
         return PTWall.validateCourt(c,function(x,y,z) return getCell():getGridSquare(x,y,z) end)

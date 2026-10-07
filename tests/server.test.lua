@@ -49,11 +49,11 @@ for _,size in ipairs({{7,20},{11,20},{8,17},{8,21}}) do
     check(last().command=="error" and db().courts[id],"new court dimension limits preserve old valid registration")
 end
 create(a)
-check(last().command=="error" and db().nextId==1 and db().courts[id],"overlapping own registration rejected")
+check(last().command=="list" and db().nextId==2 and not db().courts[id],"own overlapping redraw replaces existing court")
 for i=1,3 do create(a,"tennis",100+i*20) end
 create(a,"tennis",200)
 local registered=0; for _ in pairs(db().courts) do registered=registered+1 end
-check(db().nextId==5 and registered==1,"only newest registered court survives")
+check(db().nextId==6 and registered==1,"only newest registered court survives")
 
 for _,bad in ipairs({"hole","WindowN","DoorWallN","HoppableN"}) do
     M.reset(); a=M.player("alpha")
@@ -511,13 +511,18 @@ check(last().command=="error" and db().nextId==beforeId,"overlap with another ow
 check(db().courts[alphaNew] and S.members.beta==betaSession,"invalid overlap preserves both courts and opponent game")
 a.admin=true; create(a,"tennis",140)
 check(last().command=="error" and db().courts[betaId],"admin creation cannot silently replace another owner")
--- Partial and containing rectangles cannot replace an existing own court.
-a.admin=false
-for _,x in ipairs({180,176,184}) do
-    create(a,"tennis",x)
-    check(last().command=="error" and db().courts[alphaNew],"own overlap rejected at "..x)
+-- Owner may enlarge their own existing court by one tile.
+a.admin=false; a.x=182; a.y=100
+command(a,"create",{x1=180,x2=189,y1=100,y2=120,z=0,mode="tennis"})
+local widened=tostring(db().nextId)
+check(db().courts[widened] and db().courts[widened].x2==189 and not db().courts[alphaNew],"one-tile own court widening succeeds")
+check(db().courts[betaId] and S.members.beta==betaSession,"own widening preserves other court and score")
+local mine=false
+for _,packet in ipairs(M.packets) do
+    if packet.player==a and packet.command=="list" then
+        for _,c in ipairs(packet.args.courts) do if c.id==widened then mine=c.owned end end
+    end
 end
-create(a,"tennis",188)
-check(last().command=="list" and not db().courts[alphaNew],"touching edge with no shared area permits replacement")
+check(mine==true,"court list marks viewer-owned court for selection preview")
 checks=(checks or 0)+count
 print("SERVER PASS: "..count.." behavioral checks")
