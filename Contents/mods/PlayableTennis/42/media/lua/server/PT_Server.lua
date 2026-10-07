@@ -1,6 +1,7 @@
 if isClient() then return end
 require "PT_Core"
 require "PT_Wall"
+require "PT_Training"
 PTServer = { sessions = {}, members = {}, serial = 0, rates = {} }
 local S = PTServer
 local function now() return getTimestampMs() / 1000 end
@@ -77,6 +78,28 @@ local function wallPath(c,x1,y1,x2,y2)
     local ax,ay=PTWall.toWorld(c,x1,math.max(0.02,y1))
     local bx,by=PTWall.toWorld(c,x2,math.max(0.02,y2))
     return PTWall.lineClear(ax,ay,bx,by,c.z,squareAt)
+end
+-- Reward time spent in real rallies, not packet volume or missed swings.
+-- Recent successful contact is required so waiting/AFK participants do not train.
+local function trainingContact(s,slot,p)
+    s.training=s.training or {}
+    local entry=s.training[slot]
+    if not entry or entry.player~=p then entry={player=p,seconds=0}; s.training[slot]=entry end
+    entry.lastContact=s.core.clock
+end
+local function trainRally(s,dt)
+    if s.core.phase~="rally" or s.core.paused or not s.core.ball then return end
+    for slot,entry in pairs(s.training or {}) do
+        local p=s.players[slot]
+        if p==entry.player and connected(p) and near(p,s.core.court,2) and not p:getVehicle()
+            and sportsRacket(p) and s.core.clock-entry.lastContact<=6 then
+            entry.seconds=entry.seconds+dt
+            if entry.seconds+0.00000001>=1 then
+                entry.seconds=math.max(0,entry.seconds-1)
+                PTTraining.advance(p,1,settings())
+            end
+        end
+    end
 end
 local function receiverReady(s,servingSlot)
     local core=s.core
@@ -231,7 +254,7 @@ function S.dispatch(p,command,args)
         end
         if startAim==nil then S.sessions[c.id]=nil; fail(p,"All shot paths to this wall are obstructed. Move sideways or select another segment."); return end
         if not PTCore.serve(s.core,1,px,py,startAim) then S.sessions[c.id]=nil; fail(p,s.core.message); return end
-        s.players[1]=p; S.members[who]=s; publish(s); return
+        s.players[1]=p; S.members[who]=s; trainingContact(s,1,p); publish(s); return
     end
     if command=="create" then
         if settings().AllowCourtCreation==false and p:getAccessLevel()~="admin" then fail(p,"Court registration is admin-only."); return end
@@ -342,7 +365,7 @@ function S.dispatch(p,command,args)
         print("[PlayableTennis] serve "..(accepted and "accepted" or "rejected")..": session="..s.id.." seq="..args.seq.." player=("..px..","..py..") court=("..s.core.court.x1..","..s.core.court.y1..","..s.core.court.x2..","..s.core.court.y2..") slot="..slot.." | "..tostring(s.core.message))
         if not accepted then fail(p,s.core.message) end
     end
-    if accepted then s.lastActivity=t end
+    if accepted then s.lastActivity=t; trainingContact(s,slot,p) end
     publish(s)
 end
 local function onlineSet()
@@ -411,6 +434,7 @@ function S.tick()
                 s.core.ball=nil; s.core.phase="ready"; s.core.rally=0
                 s.core.message="Ball met an obstacle/unloaded floor. Hold the ball to restart."
             end
+            trainRally(s,1/30)
         end
         S.accumulator=S.accumulator-1/30
     end

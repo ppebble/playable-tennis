@@ -3,5 +3,9 @@
   "Sandbox_PlayableTennis_Enabled": "Enable tennis and wall practice",
   "Sandbox_PlayableTennis_AllowCourtCreation": "Allow players to register courts",
   "Sandbox_PlayableTennis_BallSpeed": "Ball pace (trajectory assisted)",
-  "Sandbox_PlayableTennis_HitRadius": "Racket reach in tiles"
+  "Sandbox_PlayableTennis_HitRadius": "Racket reach in tiles",
+  "Sandbox_PlayableTennis_FitnessXPMultiplier": "Fitness XP multiplier",
+  "Sandbox_PlayableTennis_FitnessXPMultiplier_tooltip": "Multiplies the base 20 XP per minute of active rallies. 1 = default, 0 = no tennis Fitness XP. Native XP modifiers also apply.",
+  "Sandbox_PlayableTennis_NimbleXPMultiplier": "Nimble XP multiplier",
+  "Sandbox_PlayableTennis_NimbleXPMultiplier_tooltip": "Multiplies the base 3 XP per minute of active rallies. 1 = default, 0 = no tennis Nimble XP. Native XP modifiers also apply."
 }

@@ -3,5 +3,9 @@
   "Sandbox_PlayableTennis_Enabled": "테니스 및 벽 연습 활성화",
   "Sandbox_PlayableTennis_AllowCourtCreation": "플레이어 코트 등록 허용",
   "Sandbox_PlayableTennis_BallSpeed": "공의 속도 (궤적 자동 보정)",
-  "Sandbox_PlayableTennis_HitRadius": "라켓 타격 거리 (타일)"
+  "Sandbox_PlayableTennis_HitRadius": "라켓 타격 거리 (타일)",
+  "Sandbox_PlayableTennis_FitnessXPMultiplier": "체력 경험치 배율",
+  "Sandbox_PlayableTennis_FitnessXPMultiplier_tooltip": "실제 랠리 1분당 기본 20 XP에 곱합니다. 1 = 기본, 0 = 테니스 체력 경험치 없음. 게임 경험치 보정이 추가 적용됩니다.",
+  "Sandbox_PlayableTennis_NimbleXPMultiplier": "조준 시 발걸음 경험치 배율",
+  "Sandbox_PlayableTennis_NimbleXPMultiplier_tooltip": "실제 랠리 1분당 기본 3 XP에 곱합니다. 1 = 기본, 0 = 테니스 발걸음 경험치 없음. 게임 경험치 보정이 추가 적용됩니다."
 }

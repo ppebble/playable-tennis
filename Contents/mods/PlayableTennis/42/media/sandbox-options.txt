@@ -32,3 +32,23 @@ option PlayableTennis.HitRadius
     page = PlayableTennis,
     translation = PlayableTennis_HitRadius,
 }
+
+option PlayableTennis.FitnessXPMultiplier
+{
+    type = double,
+    min = 0,
+    max = 100,
+    default = 1,
+    page = PlayableTennis,
+    translation = PlayableTennis_FitnessXPMultiplier,
+}
+
+option PlayableTennis.NimbleXPMultiplier
+{
+    type = double,
+    min = 0,
+    max = 100,
+    default = 1,
+    page = PlayableTennis,
+    translation = PlayableTennis_NimbleXPMultiplier,
+}

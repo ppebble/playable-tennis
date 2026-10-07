@@ -3,7 +3,7 @@ ServerMock = { time=10000, db={}, packets={}, players={}, squares={} }
 function isClient() return false end
 function isServer() return true end
 function getTimestampMs() return ServerMock.time end
-function require(name) assert(name=="PT_Core" or name=="PT_Wall", "Unexpected dependency: "..name) end
+function require(name) assert(name=="PT_Core" or name=="PT_Wall" or name=="PT_Training", "Unexpected dependency: "..name) end
 Events = { OnClientCommand={Add=function(f) ServerMock.command=f end}, OnTick={Add=function(f) ServerMock.tick=f end} }
 SandboxVars = { PlayableTennis={} }
 ModData = {getOrCreate=function(name)
@@ -53,6 +53,14 @@ end
 function ServerMock.reset()
     ServerMock.time=10000; ServerMock.db={}; ServerMock.packets={}; ServerMock.players={}; ServerMock.squares={}
     SandboxVars.PlayableTennis={}
+    ServerMock.training={}
     PTServer.sessions={}; PTServer.members={}; PTServer.rates={}; PTServer.serial=0
     PTServer.lastTick=nil; PTServer.lastAudit=nil; PTServer.lastSend=nil; PTServer.accumulator=nil
 end
+
+-- The training module has its own real-module suite. This spy verifies that
+-- only authoritative active-play time reaches it through server commands.
+PTTraining={advance=function(p,seconds,settings)
+    ServerMock.training=ServerMock.training or {}
+    ServerMock.training[#ServerMock.training+1]={player=p,seconds=seconds,settings=settings}
+end}

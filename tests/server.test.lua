@@ -469,5 +469,40 @@ s.core.points={2,1}; command(a,"sync",{})
 saved=PTCore.snapshot(M.db); M.reset(); M.db=saved
 a=M.player("alpha",100,202.5); command(a,"sync",{}); s=S.members.alpha
 check(s and s.core.court.frame and s.core.court.x1==200 and s.core.points[1]==2,"east-west restart preserves score and canonical frame")
+-- XP follows bounded active time after accepted human contact, not input spam.
+a,id,s=setup()
+S.tick()
+for i=1,15 do M.time=M.time+100; S.tick() end
+check(#M.training==0,"waiting without opponent never grants training XP")
+b=M.player("beta",106,115); command(b,"join",{id=id})
+input(a,s,1)
+check(s.training and s.training[1] and not s.training[2],"accepted serve arms only its human training slot")
+local function trainingTicks(n)
+    for i=1,n do
+        if s.core.phase=="rally" then s.core.ball.z=100; s.core.ball.vz=0; s.core.ball.vx=0; s.core.ball.vy=0 end
+        M.time=M.time+100; S.tick()
+    end
+end
+trainingTicks(25)
+check(#M.training>=2 and #M.training<=3,"active rally trains by elapsed seconds")
+for _,grant in ipairs(M.training) do check(grant.player==a and grant.seconds==1,"unengaged opponent gets no XP and credits are batched") end
+local marked=s.training[1].lastContact
+command(a,"swing",{session=s.id,seq=2,aim=0})
+check(s.training[1].lastContact==marked,"rejected swing cannot refresh training activity")
+trainingTicks(60)
+local credited=#M.training
+check(credited<=6,"one contact cannot generate unbounded AFK training")
+trainingTicks(20)
+check(#M.training==credited,"expired contact stops XP despite an artificial ongoing rally")
+s.core.phase="ready"; s.core.ball=nil; trainingTicks(20)
+check(#M.training==credited,"ready state adds no training time")
+M.reset(); a=M.player("alpha"); id,s=startWall(a); S.tick()
+trainingTicks(15)
+check(#M.training>=1,"wall practice uses the same active training path")
+local before=#M.training; a.racket=false; trainingTicks(15)
+check(#M.training==before,"unequipped player receives no wall practice XP")
+M.reset(); a=M.player("alpha"); id,s=startWall(a); S.tick()
+M.time=M.time+5000; S.tick()
+check(#M.training==0,"server stall cannot award catch-up exercise XP")
 checks=(checks or 0)+count
 print("SERVER PASS: "..count.." behavioral checks")
