@@ -396,6 +396,15 @@ function Overlay:render()
                 self:worldLine(x1,(y1+my)/2,x2,(y1+my)/2,z,1,1,1)
                 self:worldLine(x1,(y2+my)/2,x2,(y2+my)/2,z,1,1,1)
                 self:worldLine(mx,(y1+my)/2,mx,(y2+my)/2,z,1,1,1)
+                if core.phase=="ready" and not C.waiting and (core.testTarget or core.server==C.slot) then
+                    local a=PTCore.serveArea(core,C.slot)
+                    self:worldLine(a.x1,a.y1,a.x2,a.y1,z,0.2,1,0.4)
+                    self:worldLine(a.x2,a.y1,a.x2,a.y2,z,0.2,1,0.4)
+                    self:worldLine(a.x2,a.y2,a.x1,a.y2,z,0.2,1,0.4)
+                    self:worldLine(a.x1,a.y2,a.x1,a.y1,z,0.2,1,0.4)
+                    local sx,sy=project((a.x1+a.x2)/2,a.baseline,z)
+                    self:drawText("SERVE HERE",sx-35,sy-25,0.2,1,0.4,1,UIFont.Small)
+                end
             else
                 -- Mark the actual wall foot, not a fractional storey above it.
                 local left,right=court.wallMinX or x1,court.wallMaxX or x2
@@ -436,7 +445,7 @@ function Overlay:render()
         local left = (servingSlot == 1 and even) or (servingSlot == 2 and not even)
         local side = left and "west (lower X)" or "east (higher X)"
         line(court.mode == "wall" and ("Depth " .. tostring(y2-y1) .. " tiles | Hold ball + RMB/LMB to restart.")
-            or "Serve near baseline, " .. side .. " half.",4)
+            or "Green serve box: " .. (servingSlot==1 and "NORTH" or "SOUTH") .. ", " .. side .. ".",4)
         line(tostring(C.waiting and "Waiting for opponent - tennis input disabled" or core.message or ""),5,0.7,0.9,1)
         line(core.testTarget and "Right-click menu: opponent feed (ready) / leave"
             or "Right-click > Playable Tennis: courts / leave / sync",6)

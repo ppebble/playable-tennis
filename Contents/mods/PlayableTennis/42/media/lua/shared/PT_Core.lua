@@ -176,6 +176,17 @@ function PTCore.aimTarget(s, slot, aim, serving)
     return midX(s) + aim * width * 0.3,
         midY(s) + (slot == 1 and 1 or -1) * length * 0.32
 end
+-- Presentation shares the server's service coordinates and side selection.
+function PTCore.serveArea(s, slot)
+    if s.court.mode ~= "tennis" or not validSlot(slot) then return nil end
+    local c=s.court
+    local even=(s.points[1]+s.points[2])%2==0
+    local left=(slot==1 and even) or (slot==2 and not even)
+    local baseline=slot==1 and c.y1 or c.y2
+    return {x1=left and c.x1+0.2 or midX(s)+0.1,
+        x2=left and midX(s)-0.1 or c.x2-0.2,
+        y1=baseline-1.5,y2=baseline+1.5,baseline=baseline,left=left}
+end
 function PTCore.serve(s, slot, px, py, aim)
     if not validSlot(slot) or not finite(px) or not finite(py) or not validAim(aim) then return reject(s, "Invalid serve input.") end
     if s.phase ~= "ready" then return reject(s, "Wait until ready to serve.") end
@@ -190,12 +201,15 @@ function PTCore.serve(s, slot, px, py, aim)
             return reject(s, "Stand inside the wall practice area, 1 to 14 tiles from the wall.")
         end
     elseif px < c.x1 + 0.2 or px > c.x2 - 0.2 or math.abs(py - baseline) > 1.5 then
+        if not wall then
+            return reject(s, "Move to the green serve box at the " .. (slot==1 and "NORTH (lower Y)" or "SOUTH (higher Y)") .. " baseline.")
+        end
         return reject(s, "Stand within 1.5 tiles of your baseline, inside the court width.")
     end
     local even = (s.points[1] + s.points[2]) % 2 == 0
     local fromLeft = (slot == 1 and even) or (slot == 2 and not even)
     if not wall and ((fromLeft and px >= midX(s) - 0.1) or (not fromLeft and px <= midX(s) + 0.1)) then
-        return reject(s, fromLeft and "Serve from the left half of your baseline." or "Serve from the right half of your baseline.")
+        return reject(s, fromLeft and "Move into the green serve box: WEST (lower X) half." or "Move into the green serve box: EAST (higher X) half.")
     end
     local tx, ty = PTCore.aimTarget(s, slot, aim, true)
     s.server = slot

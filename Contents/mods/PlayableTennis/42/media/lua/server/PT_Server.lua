@@ -221,7 +221,7 @@ function S.dispatch(p,command,args)
     end
     local accepted=PTCore[command](s.core,slot,px,py,args.aim)
     if command=="serve" then
-        print("[PlayableTennis] serve "..(accepted and "accepted" or "rejected")..": session="..s.id.." seq="..args.seq.." | "..tostring(s.core.message))
+        print("[PlayableTennis] serve "..(accepted and "accepted" or "rejected")..": session="..s.id.." seq="..args.seq.." player=("..px..","..py..") court=("..s.core.court.x1..","..s.core.court.y1..","..s.core.court.x2..","..s.core.court.y2..") slot="..slot.." | "..tostring(s.core.message))
         if not accepted then fail(p,s.core.message) end
     end
     if accepted then s.lastActivity=t end

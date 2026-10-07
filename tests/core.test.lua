@@ -308,3 +308,18 @@ for i=1,600 do
     if rallyTest.lastHit==2 or rallyTest.phase~="rally" then break end
 end
 check(rallyTest.lastHit==2 and rallyTest.shotId==2,"real trajectory reaches target and returns without teleporting")
+
+-- Live solo failure: a serve outside the baseline must stay rejected,
+-- and the highlighted destination must actually accept the serve.
+for slot=1,2 do
+    for point=0,1 do
+        local serveState=new()
+        serveState.server=slot; serveState.points[1]=point
+        local area=PTCore.serveArea(serveState,slot)
+        local x=(area.x1+area.x2)/2
+        check(not PTCore.serve(serveState,slot,x,9,0),"middle of court cannot serve")
+        check(string.find(serveState.message,"green serve box",1,true),"rejection identifies visible serve destination")
+        check(not serveState.ball,"rejected serve cannot create a ball")
+        check(PTCore.serve(serveState,slot,x,area.baseline,0),"highlighted service box starts serve")
+    end
+end

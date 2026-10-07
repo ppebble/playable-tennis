@@ -21,7 +21,7 @@ Push-Location $GamePath
 try {
 & $java -cp $cp OverlayHitTest
 if ($LASTEXITCODE -ne 0) { throw 'Native UI hit testing failed' }
-& $java -cp $cp SwingAnimationTest (Join-Path $mod 'media/AnimSets/player/actions/PT_TennisSwing.xml') (Join-Path $mod 'media/AnimSets/player/maskingright/PT_TennisSwing.xml')
+& $java -cp $cp SwingAnimationTest $mod
 if ($LASTEXITCODE -ne 0) { throw 'Native swing animation selection failed' }
 & $java -cp $cp LuaHarness $wall $core (Join-Path $repo 'tests/core.test.lua')
 if ($LASTEXITCODE -ne 0) { throw 'Core tests failed' }
@@ -62,25 +62,18 @@ foreach ($property in @('Icon','StaticModel','WorldStaticModel')) {
 foreach ($property in @('PrimaryAnimMask','SecondaryAnimMask')) {
     if ($itemScript -notmatch "$property\s*=\s*PT_TennisRacket\s*,") { throw "Missing normal-item hand model mask: $property" }
 }
-$swingPath = Join-Path $mod 'media/AnimSets/player/maskingright/PT_TennisSwing.xml'
+$swingPath = Join-Path $mod 'media/AnimSets/player/maskingright/PT_RacketStroke.xml'
 [xml]$swing = Get-Content $swingPath -Raw
-[xml]$actionSwing = Get-Content (Join-Path $mod 'media/AnimSets/player/actions/PT_TennisSwing.xml') -Raw
-# Both layers need an owned node: actions otherwise selects Bob_EmoteSurrender;
-# run/sprint exclude actions and require the maskingright node instead.
-foreach ($node in @($swing.animNode, $actionSwing.animNode)) {
-    if ([int]$node.m_ConditionPriority -ne 1) { throw 'Owned swing must win native bag/aim node selection' }
-    if ($node.m_AnimName -ne 'Bob_Attack1Hand01_Hit' -or $node.m_Events) { throw 'Swing must use event-free native one-handed attack' }
-    $nodeConditions = @{}
-    foreach ($condition in $node.m_Conditions) { $nodeConditions[$condition.m_Name] = $condition.m_Value }
-    if ($nodeConditions.PerformingAction -ne 'PT_TennisSwing' -or $nodeConditions.Count -ne 1) { throw 'Both swing layers must match only the owned action, independent of model mask refresh' }
-    $nodeWeights = @{}
-    foreach ($bone in $node.m_SubStateBoneWeights) { $nodeWeights[$bone.boneName] = [double]$bone.weight }
-    if ($nodeWeights.Bip01 -ne 0 -or $nodeWeights.Bip01_R_Clavicle -ne 1 -or $nodeWeights.Bip01_Prop1 -ne 1 -or $nodeWeights.Count -ne 3) { throw 'Swing must mask all bones except right arm and racket prop' }
-    if ([double]$node.m_SpeedScale -ne 1 -or $node.m_Looped -ne 'false') { throw 'Swing must play once at normal one-second speed' }
-}
+$node = $swing.animNode
+if ([int]$node.m_ConditionPriority -ne 1) { throw 'Owned swing must win native bag/aim node selection' }
+if ($node.m_AnimName -ne 'Bob_Attack1Hand01_Hit' -or $node.m_Events) { throw 'Running swing must use event-free native one-handed clip' }
 $conditions = @{}
-foreach ($condition in $swing.animNode.m_Conditions) { $conditions[$condition.m_Name] = $condition.m_Value }
-if ($conditions.PerformingAction -ne 'PT_TennisSwing') { throw 'Swing must be isolated to the owned sports action' }
+foreach ($condition in $node.m_Conditions) { $conditions[$condition.m_Name] = $condition.m_Value }
+if ($conditions.PerformingAction -ne 'RemoveBushLongBlade' -or $conditions.PT_RacketStroke -ne 'true' -or $conditions.Count -ne 2) { throw 'Running mask must belong only to the tennis action' }
+$nodeWeights = @{}
+foreach ($bone in $node.m_SubStateBoneWeights) { $nodeWeights[$bone.boneName] = [double]$bone.weight }
+if ($nodeWeights.Bip01 -ne 0 -or $nodeWeights.Bip01_R_Clavicle -ne 1 -or $nodeWeights.Bip01_Prop1 -ne 1 -or $nodeWeights.Count -ne 3) { throw 'Running swing must mask all bones except right arm and racket prop' }
+if ([double]$node.m_SpeedScale -ne 1 -or $node.m_Looped -ne 'false') { throw 'Running swing must play once at normal speed' }
 foreach ($state in @('idle','movement','aim','run','sprint')) {
     [xml]$tags = Get-Content (Join-Path $GamePath "media/actiongroups/player/$state/childTags.xml") -Raw
     if (@($tags.childTags.tag) -notcontains 'maskingright') { throw "Native state cannot display racket swing: $state" }

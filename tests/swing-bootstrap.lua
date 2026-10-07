@@ -3,6 +3,7 @@ ISBaseTimedAction = {}
 function ISBaseTimedAction:derive() local t={}; t.__index=t; setmetatable(t,{__index=self}); return t end
 function ISBaseTimedAction:new(character) return setmetatable({character=character},{__index=self}) end
 function ISBaseTimedAction:setActionAnim(name, models) self.anim=name; self.models=models end
+function ISBaseTimedAction:setAnimVariable(name, value) self.variables=self.variables or {}; self.variables[name]=value end
 SwingMock={queue={queue={}}}
 ISTimedActionQueue={}
 function ISTimedActionQueue.getTimedActionQueue() return SwingMock.queue end

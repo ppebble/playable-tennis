@@ -28,8 +28,8 @@ public final class SwingAnimationTest {
 
     @SuppressWarnings("unchecked")
     public static void main(String[] args) throws Exception {
-        if (args.length != 2) throw new IllegalArgumentException("Expected actions and maskingright XML paths");
-        Path version = Path.of(args[0]).toAbsolutePath().getParent().getParent().getParent().getParent().getParent();
+        if (args.length != 1) throw new IllegalArgumentException("Expected mod 42 root path");
+        Path version = Path.of(args[0]).toAbsolutePath();
         Path common = version.resolveSibling("common");
         Class<?> fsType = Class.forName("zombie.ZomboidFileSystem");
         Object fs = fsType.getField("instance").get(null);
@@ -43,6 +43,36 @@ public final class SwingAnimationTest {
         guidType.getMethod("setModID", String.class).invoke(guids, "game");
         guidType.getMethod("loaded").invoke(guids);
         setField(fs, "fileGuidTable", guids);
+
+        Class<?> nodeType = Class.forName(PREFIX + "AnimNode");
+        Class<?> stateType = Class.forName(PREFIX + "AnimState");
+        Class<?> variablesType = Class.forName(PREFIX + "AnimationVariableSource");
+        Class<?> sourceType = Class.forName(PREFIX + "IAnimationVariableSource");
+        Method set = variablesType.getMethod("setVariable", String.class, String.class);
+        Method check = nodeType.getMethod("checkConditions", sourceType);
+        Method select = stateType.getMethod("getAnimNodes", sourceType, List.class);
+
+        // The actions-layer stroke must work with NO mod file mappings or nodes loaded.
+        Object nativeActions = stateType.getMethod("Parse", String.class, String.class)
+            .invoke(null, "actions", "media/AnimSets/player/actions");
+        Object nativeVariables = variablesType.getConstructor().newInstance();
+        set.invoke(nativeVariables, "PerformingAction", "RemoveBushLongBlade");
+        List<Object> nativeSelected = (List<Object>) select.invoke(nativeActions, nativeVariables, new ArrayList<>());
+        if (nativeSelected.size() != 1 || !"RemoveBushLongBlade".equals(nodeType.getField("name").get(nativeSelected.get(0)))) {
+            throw new AssertionError("Native one-hand stroke did not win without mod mappings");
+        }
+        Object nativeStroke = nativeSelected.get(0);
+        if (!"Bob_Attack1Hand01_Hit".equals(nodeType.getField("animName").get(nativeStroke))) {
+            throw new AssertionError("Native action no longer uses the one-hand hit clip");
+        }
+        List<Object> events = (List<Object>) nodeType.getField("events").get(nativeStroke);
+        if (events.isEmpty()) throw new AssertionError("Expected native Chop event fixture");
+        for (Object event : events) {
+            if (!"Chop".equals(event.getClass().getField("eventName").get(event))) {
+                throw new AssertionError("Unexpected native action event: " + event);
+            }
+        }
+        System.out.println("PASS native one-hand action without mod mappings; only Chop events (no damage events)");
 
         // Register only this fixture mod, without reading/writing the user's mod list.
         Class<?> modType = Class.forName("zombie.gameStates.ChooseGameInfo$Mod");
@@ -65,22 +95,13 @@ public final class SwingAnimationTest {
             }
         }
 
-        Class<?> nodeType = Class.forName(PREFIX + "AnimNode");
-        Class<?> stateType = Class.forName(PREFIX + "AnimState");
-        Class<?> variablesType = Class.forName(PREFIX + "AnimationVariableSource");
-        Class<?> sourceType = Class.forName(PREFIX + "IAnimationVariableSource");
-        Method set = variablesType.getMethod("setVariable", String.class, String.class);
-        Method check = nodeType.getMethod("checkConditions", sourceType);
-        Method select = stateType.getMethod("getAnimNodes", sourceType, List.class);
-        for (String path : args) {
-            Path xml = Path.of(path).toAbsolutePath();
-            String layer = xml.getParent().getFileName().toString();
+        for (String layer : new String[]{"maskingright"}) {
             Object state = stateType.getMethod("Parse", String.class, String.class)
                 .invoke(null, layer, "media/AnimSets/player/" + layer);
             List<Object> loaded = (List<Object>) stateType.getField("nodes").get(state);
             Object owned = null;
             for (Object node : loaded) {
-                if ("PT_TennisSwing".equals(nodeType.getField("name").get(node))) owned = node;
+                if ("PT_RacketStroke".equals(nodeType.getField("name").get(node))) owned = node;
             }
             if (owned == null) throw new AssertionError("Native layer discovery did not load swing: " + layer);
             if (loaded.size() < 2) throw new AssertionError("Native vanilla competitors missing: " + layer);
@@ -105,7 +126,8 @@ public final class SwingAnimationTest {
                         throw new AssertionError("Missing native competitor fixture for " + scenario[0]);
                     }
                 }
-                set.invoke(variables, "PerformingAction", "PT_TennisSwing");
+                set.invoke(variables, "PerformingAction", "RemoveBushLongBlade");
+                set.invoke(variables, "PT_RacketStroke", "true");
                 for (String mask : new String[]{"", "PT_TennisRacket", "holdingbagright"}) {
                     set.invoke(variables, "RightHandMask", mask);
                     List<Object> selected = (List<Object>) select.invoke(state, variables, new ArrayList<>());
@@ -116,6 +138,9 @@ public final class SwingAnimationTest {
                             + " mask=" + mask + " selected=" + names);
                     }
                 }
+                set.invoke(variables, "PT_RacketStroke", "false");
+                if (Boolean.TRUE.equals(check.invoke(owned, variables))) throw new AssertionError("Sports mask leaks into native bush removal");
+                set.invoke(variables, "PT_RacketStroke", "true");
                 set.invoke(variables, "PerformingAction", "Eat");
                 if (Boolean.TRUE.equals(check.invoke(owned, variables))) throw new AssertionError("Swing leaks into unrelated action");
             }
