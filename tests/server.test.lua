@@ -451,7 +451,7 @@ for y=200,209 do
     local sq=M.square(109,y,0)
     sq.flags.HoppableW=true; sq.flags.collideW=true
     local net={getSprite=function() return {getName=function() return "recreational_sports_01_53" end} end,
-        getProperties=function() return {Is=function(_,f) return f==IsoFlagType.HoppableW or f==IsoFlagType.collideW end} end}
+        getProperties=function() return {has=function(_,f) return f==IsoFlagType.HoppableW or f==IsoFlagType.collideW end} end}
     function sq:getObjects() return {size=function() return 1 end,get=function() return net end} end
 end
 command(a,"create",{x1=100,x2=118,y1=200,y2=210,z=0,mode="tennis"})

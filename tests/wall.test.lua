@@ -162,7 +162,7 @@ end
 -- even ones sharing a square with a tennis net, remain obstacles.
 local function addNetObject(sq,name,edge)
     sq.objects=sq.objects or {}
-    local props={Is=function(_,flag) return flag=="Hoppable"..edge or flag=="collide"..edge end}
+    local props={has=function(_,flag) return flag=="Hoppable"..edge or flag=="collide"..edge end}
     sq.objects[#sq.objects+1]={getSprite=function() return {getName=function() return name end} end,
         getProperties=function() return props end}
     function sq:getObjects() return {size=function() return #self.objects end,get=function(_,i) return self.objects[i+1] end} end
@@ -175,6 +175,10 @@ for _,edge in ipairs({"N","W"}) do
         squares={}
         local x,y=edge=="N" and 5 or 9,edge=="N" and 9 or 5
         addNetObject(square(x,y,0),"recreational_sports_01_"..index,edge)
+        -- A real square includes its floor before the net; B42 exposes has, not Is.
+        table.insert(square(x,y,0).objects,1,{
+            getSprite=function() return {getName=function() return "floors_exterior_tilesandstone_01_0" end} end,
+            getProperties=function() return {has=function() return false end} end})
         check(PTWall.validateCourt(c,square),"native net segment allowed on matching center edge")
         addNetObject(square(x,y,0),"fencing_01_0",edge)
         check(not PTWall.validateCourt(c,square),"co-located ordinary fence cannot hide behind net exception")

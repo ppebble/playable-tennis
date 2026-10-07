@@ -25,7 +25,7 @@ local function edgeProperties(props,edge)
     if not props then return false end
     for _,prefix in ipairs({"collide","Wall","Window","window","DoorWall","Hoppable"}) do
         local value=IsoFlagType[prefix..edge]
-        if value and props:Is(value) then return true end
+        if value and props:has(value) then return true end
     end
     return false
 end

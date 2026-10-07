@@ -16,11 +16,15 @@ if ($LASTEXITCODE -ne 0) { throw 'Native swing test compilation failed' }
 & $Javac -d $build (Join-Path $repo 'tests/TrainingNativeTest.java')
 if ($LASTEXITCODE -ne 0) { throw 'Native training XP test compilation failed' }
 $java = Join-Path $GamePath 'jre64/bin/java.exe'
+& $Javac -d $build (Join-Path $repo 'tests/CourtPropertiesNativeTest.java')
+if ($LASTEXITCODE -ne 0) { throw 'Native court property test compilation failed' }
 $cp = "$build;$(Join-Path $GamePath 'projectzomboid.jar')"
 $core = Join-Path $mod 'media/lua/shared/PT_Core.lua'
 $wall = Join-Path $mod 'media/lua/shared/PT_Wall.lua'
 Push-Location $GamePath
 try {
+& $java -cp $cp CourtPropertiesNativeTest
+if ($LASTEXITCODE -ne 0) { throw 'Native court property API verification failed' }
 & $java -cp $cp TrainingNativeTest
 if ($LASTEXITCODE -ne 0) { throw 'Native training XP verification failed' }
 & $java -cp $cp LuaHarness (Join-Path $repo 'tests/training-bootstrap.lua') (Join-Path $mod 'media/lua/server/PT_Training.lua') (Join-Path $repo 'tests/training.test.lua')
