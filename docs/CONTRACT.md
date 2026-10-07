@@ -1,8 +1,8 @@
-# Runtime contract — 0.2.2 development snapshot
+# Runtime contract — 0.2.2
 
-This is an in-development contract, not a release declaration.
+Repository-only contract for the 0.2.2 release package. Steam publication is a separate action.
 
-PTCore.new/serve/swing/step/snapshot and aimTarget(state,slot,aim,serving) remain pure Lua. Aim is finite [-1,1]. Tennis coordinates are world x/y; freeWall coordinates are wall tangent/perpendicular depth. Free wall courts include frame={originX,originY,ux,uy,vx,vy}, wallMinX/wallMaxX and edge metadata. Wall targets/reflection use real solid extents; the player area widens linearly to +4 tiles per side at depth14. Free serves launch at the player's current depth. Reflection reverses normal velocity without recalculating landing distance. Tennis stays rectangular.
+PTCore.new/serve/swing/step/snapshot and aimTarget(state,slot,aim,serving) remain pure Lua. Aim is finite [-1,1]. North-south tennis uses world x/y; east-west tennis swaps axes into a local frame. FreeWall coordinates are wall tangent/perpendicular depth. Free wall courts include frame={originX,originY,ux,uy,vx,vy}, wallMinX/wallMaxX and edge metadata. Wall targets/reflection use real solid extents; the player area widens linearly to +2 tiles per side at depth14. Free serves launch at the player's current depth. Reflection reverses normal velocity without recalculating landing distance. Tennis stays rectangular.
 
 PTWall.select(px,py,z,{x,y,edge=N or W},getSquare) and find(px,py,z,wx,wy,getSquare) return a temporary court/error. Start depth is perpendicular 1–14 tiles. toLocal/toWorld/contains convert/check the frame and player area. valid checks wall and optional player corridor; lineClear traces loaded floor and edges. Window/door/fence rejection and obstacle checks remain active despite relaxed selection.
 
@@ -16,4 +16,7 @@ PT_Swing queues a cosmetic one-second native one-hand action with no damage even
 
 PT_ConvertRacket implements server-native complete(); the inventory context menu only queues it. Sports item is base:normal with native appearance and hand masks. Require root ownership and no vehicle/death/attachment; completion is idempotent. Preserve item state and equipment; blood uses PT_WeaponBlood while Normal.
 
-Solo test: startSolo {id} starts exclusive slot1 session; core.testTarget {x,y,radius} enables fixed slot2 return only within normal reach/height and after valid service bounce. feed {session,seq,aim=0} substitutes server2 only in ready test mode. Normal matches still require two humans. Valid create replaces all registered courts and closes their sessions atomically after validation, preserving freeWall sessions. list includes full bounds. PTCourtSelector uses native building cursor and ranch highlight with exclusive far edges and 250ms click guard.
+
+Release sessions accept human-versus-human tennis and wall practice only. Former solo/forced-feed commands are not gameplay entry points. Legacy solo-test saved matches are discarded without deleting the registered court or normal point checkpoints.
+
+Valid create replaces registered courts and closes their sessions atomically after validation, preserving freeWall sessions. list includes full bounds. PTCourtSelector uses the native building cursor and ranch highlight with exclusive far edges and a 250ms click guard. The client HUD is top-centered during play; wall practice shows Rally | Best | Depth, and tennis shows player names and large point scores. A finished tennis game identifies its winning player by name followed by Win.

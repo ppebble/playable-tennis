@@ -7,7 +7,8 @@ function p:getPrimaryHandItem() return racket end
 function p:getSecondaryHandItem() return self.noBall and nil or ball end
 function p:isDead() return self.dead end
 function p:getVehicle() return self.vehicle end
-function p:getVariableString(name) return name=="PerformingAction" and "RemoveBushLongBlade" or "holdingbagright" end
+function p:getVariableString() error("release swing must not query diagnostic variables") end
+function p:getAnimationDebug() error("release swing must not query animation diagnostics") end
 check(PTSwing.play(p,1000),"first cosmetic swing")
 local action=SwingMock.queue.queue[1]
 action.action={setUseProgressBar=function(self,value) self.progress=value end,
@@ -19,10 +20,7 @@ check(action.modelsAtAnim==action.handModels,"hand models set before remote anim
 check(action.variables.PT_RacketStroke==true,"owned movement mask is scoped to tennis action")
 action:animEvent("Chop",nil)
 check(action.anim=="RemoveBushLongBlade" and not PT_SwingAction.complete,"native chop event has no world mutation callback")
-local samples=0
-function p:getAnimationDebug() samples=samples+1; return 'Native RemoveBushLongBlade Variables: ignored' end
-for i=1,8 do action:update() end
-check(samples==1,"playback diagnostic samples layers once after animation evaluation")
+check(not PT_SwingAction.update,"release swing adds no diagnostic update callback")
 check(action.action.progress==false and action.action.block==false,"no progress bar or movement block")
 check(not action.stopOnAim and not action.stopOnWalk and not action.stopOnRun,"movement and aim remain enabled")
 check(action.maxTime/30==1 and action:adjustMaxTime(30)==30,"one second motion independent of moodles")

@@ -4,7 +4,7 @@
 
 The old launch solver set flight time to horizontal distance / nominal speed, then solved vertical velocity to land exactly at the marker. With gravity 9.8, a longer flight therefore created a much higher lob. The ground reflection retained 78% of downward speed, so the tall incoming arc also produced an excessively high rebound. This is a numerical cause, independently of visual frame rate.
 
-For a representative diagonal feed on the former maximum 14 x 30 court (quarter-width server, speed 9, launch height 1.4), the analytical values are:
+For a representative diagonal serve on the former maximum 14 x 30 court (quarter-width server, speed 9, launch height 1.4), the analytical values are:
 
 | Quantity | Previous | Revised |
 |---|---:|---:|
@@ -15,7 +15,7 @@ For a representative diagonal feed on the former maximum 14 x 30 court (quarter-
 | First bounce to baseline | 1.203 s | 0.750 s |
 | Height at baseline | 4.155 | 0.726 |
 
-These are calculations for the model, not measurements of live game visuals. The hit envelope is 0.15 to 2.4 height units: the old feed is above it near the baseline. The revised rebound spends about 0.88 seconds inside that height envelope, with at least 0.85 seconds verified by the fixed-step simulator.
+These are calculations for the model, not measurements of live game visuals. The hit envelope is 0.15 to 2.4 height units: the old serve is above it near the baseline. The revised rebound spends about 0.88 seconds inside that height envelope, with at least 0.85 seconds verified by the fixed-step simulator.
 
 For launch height z and apex limit H=2.4, the maximum flight duration is `(sqrt(2*g*(H-z)) + sqrt(2*g*H))/g`. Apply that cap after the net-clearance duration calculation. An impossible very low stroke immediately beside the net can still hit the net; clearance must not override the height cap. BallSpeed remains nominal because trajectory assistance may increase flight speed on a long court. It is not a strict horizontal speed limit.
 
@@ -31,6 +31,6 @@ Width is a playability choice, not a claim about official court scale or measure
 
 ## Verification boundaries
 
-Game Kahlua tests cover both server directions, low/default/high nominal speeds, new minimum/maximum and previous extremes, legal serve landing, actual first-bounce markers, apex and rebound bounds, at least 0.85 seconds of return height, fixed solo-target returns, and opposite feeds hit from the receiving marker. Extreme crosscourt shots have at least 0.6 seconds within court plus default racket reach after the first bounce. Later movement beyond a sideline can still produce a legitimate unreturned winner.
+Game Kahlua tests cover both server directions, low/default/high nominal speeds, new minimum/maximum and previous extremes, legal serve landing, actual first-bounce markers, apex and rebound bounds, at least 0.85 seconds of return height, human returns from the receiving marker. Extreme crosscourt shots have at least 0.6 seconds within court plus default racket reach after the first bounce. Later movement beyond a sideline can still produce a legitimate unreturned winner.
 
 Near-net contacts at heights 0.15, 0.5, 1.2 and 2.4 verify that net clearance never breaks the apex cap. Existing wall continuity tests remain intact. These tests prove simulation behavior; they do not prove live client-server timing, input comfort, or displayed smoothness.

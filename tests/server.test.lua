@@ -285,36 +285,25 @@ M.reset(); a=M.player("alpha",105,114)
 for offset=-4,4 do M.square(100+offset,100,0).flags.WallN=true end
 command(a,"startWall",{x=100,y=100,edge="N"})
 check(S.members.alpha and S.members.alpha.core.phase=="rally","server starts diagonal practice at perpendicular depth fourteen")
-M.reset(); a=M.player("alpha"); id=create(a)
-command(a,"startSolo",{id=id}); s=S.members.alpha
-check(s and s.core.testTarget and not s.players[2],"solo owns only real player slot")
-check(last().command=="state" and not last().args.waiting,"solo publishes playable state")
-b=M.player("beta"); command(b,"join",{id=id})
-check(not S.members.beta,"normal player cannot enter test session")
-command(b,"startSolo",{id=id}); check(not S.members.beta,"other tester cannot replace occupied session")
+a,id,s=setup("tennis")
+local packetCount=#M.packets
+command(a,"startSolo",{id=id})
 command(a,"feed",{session=s.id,seq=1,aim=0})
-check(s.core.phase=="rally" and s.core.lastHit==2,"authorized explicit target feed")
-local fed=s.core.ball
-command(a,"feed",{session=s.id,seq=1,aim=0})
-check(s.core.ball==fed,"duplicate feed cannot reset ball")
-command(a,"feed",{session=s.id,seq=2,aim=0})
-check(s.core.ball==fed,"feed during rally rejected")
-for i=1,1200 do PTCore.step(s.core,1/120) end
-check(s.core.phase=="ready" and s.core.server==2,"server fixture reaches ready after feed")
+check(#M.packets==packetCount and s.core.phase=="ready" and not s.core.ball and not s.seq[1],"removed commands cannot mutate a normal session")
+b=M.player("beta",106,120); command(b,"join",{id=id})
 a.x,a.y=102,109
-command(a,"serve",{session=s.id,seq=3,aim=0})
-check(s.core.phase=="ready" and s.core.server==2,"invalid solo baseline retains scheduled server")
-local rejection=M.packets[#M.packets-1]
+input(a,s,1)
+local rejection=M.packets[#M.packets-2]
 check(rejection.command=="error" and string.find(rejection.args.message,'baseline',1,true),"baseline rejection emits visible error before state")
-a.x=(s.core.points[1]+s.core.points[2])%2==0 and 102 or 106; a.y=100
-command(a,"serve",{session=s.id,seq=4,aim=0})
-check(s.core.phase=="rally" and s.core.server==1 and s.core.lastHit==1,"solo server accepts human serve after feed")
+a.x,a.y=102,100
+input(a,s,2)
+check(s.core.phase=="rally","normal serve works after rejected baseline")
 M.square(103,105,0).solid=true
 create(a)
 check(S.members.alpha==s and db().courts[id],"invalid replacement preserves old court session")
 M.square(103,105,0).solid=false
 create(a)
-check(not S.members.alpha and not S.sessions[id] and not db().courts[id],"valid replacement closes solo session")
+check(not S.members.alpha and not S.sessions[id] and not db().courts[id],"valid replacement closes normal session")
 M.reset(); a=M.player("alpha"); local wallId,wallSession=startWall(a)
 b=M.player("beta"); create(b)
 check(S.sessions[wallId]==wallSession and S.members.alpha==wallSession,"replacement preserves free wall session")
@@ -367,21 +356,21 @@ for servingSlot=1,2 do
         check(s.core.phase=="rally" and s.core.faults==1,"ready receiver unlocks second serve without clearing fault")
     end
 end
-M.reset(); a=M.player("alpha"); id=create(a)
-command(a,"startSolo",{id=id}); s=S.members.alpha
-local before=PTCore.snapshot(s.core)
-a.x=106
-command(a,"feed",{session=s.id,seq=1,aim=0})
-check(s.core.phase=="ready" and not s.core.ball and s.core.server==before.server and s.core.faults==before.faults,"feed rejects unpositioned tester before changing scheduled server")
-local receiveArea=PTCore.receiveArea(s.core,2)
-a.x,a.y=receiveArea.x,receiveArea.y
-command(a,"feed",{session=s.id,seq=2,aim=0})
-check(s.core.phase=="rally" and s.core.lastHit==2,"positioned tester unlocks feed")
-check(s.core.testTarget.x==s.core.ball.x and s.core.testTarget.y==s.core.court.y2,"feed target depicts actual opposite server")
-S.tick(); M.time=M.time+700; S.tick()
-receiveArea=PTCore.receiveArea(s.core,1)
-check(s.core.phase=="ready" and s.core.testTarget.x==receiveArea.x and s.core.testTarget.y==receiveArea.y,"stall let repositions solo target for human serve")
-check(s.core.receiverReady,"solo target is immediately ready after let")
+-- Remove only legacy solo test saves, retaining registered courts and real scores.
+a,id,s=setup("tennis")
+s.core.points={2,1}; command(a,"sync",{})
+local court=PTCore.snapshot(db().courts[id]); court.id="legacy-test"
+db().courts[court.id]=court
+local old=PTCore.new(court); old.testTarget={x=106,y=115}
+db().sets[court.id]={core=old,names={"tester"}}
+S.sessions={}; S.members={}
+command(a,"sync",{})
+check(db().courts[court.id] and not db().sets[court.id] and not S.sessions[court.id] and not S.members.tester,"migration removes only legacy test set and keeps its court")
+check(S.members.alpha and S.members.alpha.core.points[1]==2 and S.members.alpha.core.points[2]==1,"migration preserves regular saved score and participant")
+local outsider=M.player("tester")
+command(outsider,"startSolo",{id=court.id})
+command(outsider,"feed",{session="removed",seq=1,aim=0})
+check(not S.members.tester and not S.sessions[court.id],"removed commands cannot recreate a legacy test set")
 -- Persist only serializable values, restore a new runtime, and explicitly rebind
 -- the authenticated live username without exposing either reserved slot.
 a,id,s=setup("tennis")

@@ -32,7 +32,7 @@ local function save(s)
     if s.core.court.mode~="tennis" then return end
     local core=s.core
     local signature=table.concat({tostring(core.points[1]),tostring(core.points[2]),tostring(core.server),
-        tostring(core.faults),tostring(core.bestRally),tostring(core.winner),tostring(core.testTarget~=nil),
+        tostring(core.faults),tostring(core.bestRally),tostring(core.winner),
         tostring(s.names and s.names[1]),tostring(s.names and s.names[2])},":")
     if signature==s.savedSignature then return end
     s.savedSignature=signature
@@ -104,9 +104,6 @@ end
 local function receiverReady(s,servingSlot)
     local core=s.core
     if core.court.mode~="tennis" then return true end
-    if core.testTarget and servingSlot==1 then
-        return PTCore.receiverInArea(core,1,core.testTarget.x,core.testTarget.y)
-    end
     local p=s.players[3-servingSlot]
     local connected=false
     if isServer() then
@@ -118,11 +115,9 @@ local function receiverReady(s,servingSlot)
     return PTCore.receiverInArea(core,servingSlot,x,y)
 end
 local function publish(s)
-    PTCore.refreshTestTarget(s.core)
-    local servingSlot=s.core.testTarget and 1 or s.core.server
+    local servingSlot=s.core.server
     s.core.receiveSlot=3-servingSlot
     s.core.receiverReady=receiverReady(s,servingSlot)
-    if s.core.testTarget then s.core.feedReceiverReady=receiverReady(s,2) end
     s.revision=s.revision+1
     local names=PTCore.snapshot(s.names or {})
     for i=1,2 do if s.players[i] then names[i]=key(s.players[i]) end end
@@ -130,7 +125,7 @@ local function publish(s)
     for slot=1,2 do
         local p=s.players[slot]
         if connected(p) then emit(p,"state",{session=s.id,slot=slot,revision=s.revision,lastSeq=s.seq[slot] or 0,
-            core=PTCore.snapshot(s.core),waiting=s.core.court.mode=="tennis" and not s.core.testTarget and not (s.players[1] and s.players[2]),players=names}) end
+            core=PTCore.snapshot(s.core),waiting=s.core.court.mode=="tennis" and not (s.players[1] and s.players[2]),players=names}) end
     end
 end
 local function close(s,reason)
@@ -174,7 +169,8 @@ end
 local function restore()
     local db=database()
     for id,record in pairs(db.sets) do
-        if not db.courts[id] or record.core.phase=="finished" then db.sets[id]=nil
+        -- Discard development-only games while preserving their registered courts.
+        if not db.courts[id] or record.core.phase=="finished" or record.core.testTarget~=nil then db.sets[id]=nil
         elseif not S.sessions[id] then
             local s=newSession(db.courts[id])
             if s then
@@ -188,7 +184,7 @@ local function restore()
 end
 local function availability(s)
     if settings().Enabled==false then return "Tennis disabled by server; score saved." end
-    for i=1,(s.core.testTarget and 1 or 2) do
+    for i=1,2 do
         local p=s.players[i]
         if not connected(p) or not near(p,s.core.court,2) or p:getVehicle() or not sportsRacket(p) then
             return "Waiting for both participants on court with intact sports rackets; score saved."
@@ -222,7 +218,7 @@ function S.dispatch(p,command,args)
     if s and p~=s.players[1] and p~=s.players[2] then
         local slot=s.names and (s.names[1]==who and 1 or (s.names[2]==who and 2))
         local old=slot and s.players[slot]
-        if not slot or (connected(old) and not old:isDead()) or not connected(p) or p:isDead() or (command~="sync" and command~="join" and command~="startSolo") then
+        if not slot or (connected(old) and not old:isDead()) or not connected(p) or p:isDead() or (command~="sync" and command~="join") then
             fail(p,"Player connection changed. Sync to resume your saved game."); return
         end
         s.players[slot]=p; s.seq[slot]=nil
@@ -294,7 +290,7 @@ function S.dispatch(p,command,args)
         database().sets[c.id]=nil
         database().courts[c.id]=nil; list(p); return
     end
-    if command=="join" or command=="startSolo" then
+    if command=="join" then
         if s then
             if args.id==s.core.court.id then refreshPause(s); publish(s)
             else fail(p,"Leave your current session first.") end
@@ -305,26 +301,21 @@ function S.dispatch(p,command,args)
         if c.mode~="tennis" then fail(p,"Wall practice no longer needs court registration. Aim at a nearby wall."); return end
         local ok,why=clearCourt(c); if not ok then fail(p,why); return end
         s=S.sessions[c.id]
-        if s and (command=="startSolo" or s.core.testTarget) then fail(p,"Court is occupied. Leave the current match before starting another mode."); return end
-        if command=="startSolo" and (p:getVehicle() or not sportsRacket(p) or not ballInHand(p)) then
-            fail(p,"Hold a sports racket and a Tennis Ball, on foot, to start solo testing."); return
-        end
         if not s then
             s=newSession(c)
             if not s then fail(p,"Server session limit reached."); return end
         end
         local slot=not s.names[1] and 1 or (c.mode=="tennis" and not s.names[2] and 2 or nil)
         if not slot then fail(p,"Court is full."); return end
-        if command=="startSolo" then PTCore.enableTestTarget(s.core) end
         s.players[slot]=p; s.names[slot]=who; S.members[who]=s; refreshPause(s); publish(s); return
     end
-    if command~="serve" and command~="swing" and command~="feed" then return end
+    if command~="serve" and command~="swing" then return end
     if not s or args.session~=s.id then fail(p,"Session changed; sync and join again."); return end
     local slot=s.players[1]==p and 1 or 2
     if not integer(args.seq,1,2147483647) or args.seq<=(s.seq[slot] or 0) then return end
     s.seq[slot]=args.seq
     if type(args.aim)~="number" or args.aim~=args.aim or args.aim < -1 or args.aim > 1 then fail(p,"Invalid aim."); return end
-    if s.core.court.mode=="tennis" and not s.core.testTarget and not (s.players[1] and s.players[2]) then fail(p,"Waiting for a second player."); publish(s); return end
+    if s.core.court.mode=="tennis" and not (s.players[1] and s.players[2]) then fail(p,"Waiting for a second player."); publish(s); return end
     if not near(p,s.core.court,2) or p:getVehicle() then fail(p,"Stay on the court, alive and on foot."); return end
     if not sportsRacket(p) then fail(p,"Equip an intact SPORTS Tennis Racket in your primary hand."); return end
     refreshPause(s)
@@ -333,24 +324,19 @@ function S.dispatch(p,command,args)
         local ok,why=PTWall.valid(s.core.court,squareAt,p:getX(),p:getY())
         if not ok then close(s,why); return end
     end
-    if command=="serve" or command=="feed" then
+    if command=="serve" then
         if not ballInHand(p) then fail(p,"Hold a Tennis Ball in your secondary hand to serve."); return end
         local ok,why=clearCourt(s.core.court); if not ok then
             if s.core.court.mode=="tennis" then pause(s,why); publish(s) else close(s,why) end
             return
         end
         if s.core.court.mode=="tennis" and s.core.phase=="ready" then
-            PTCore.refreshTestTarget(s.core)
-            local servingSlot=command=="feed" and 2 or slot
+            local servingSlot=slot
             if not receiverReady(s,servingSlot) then
                 s.core.message="Receiver must stand in the blue receive area with an intact SPORTS Tennis Racket, alive and on foot."
                 fail(p,s.core.message); publish(s); return
             end
         end
-    end
-    if command=="feed" then
-        if not PTCore.feedTestTarget(s.core) then fail(p,"Target feed is available only while ready in solo testing.") end
-        publish(s); return
     end
     local px,py=p:getX(),p:getY()
     if s.core.court.frame then px,py=PTWall.toLocal(s.core.court,px,py) end
@@ -362,7 +348,6 @@ function S.dispatch(p,command,args)
     end
     local accepted=PTCore[command](s.core,slot,px,py,args.aim)
     if command=="serve" then
-        print("[PlayableTennis] serve "..(accepted and "accepted" or "rejected")..": session="..s.id.." seq="..args.seq.." player=("..px..","..py..") court=("..s.core.court.x1..","..s.core.court.y1..","..s.core.court.x2..","..s.core.court.y2..") slot="..slot.." | "..tostring(s.core.message))
         if not accepted then fail(p,s.core.message) end
     end
     if accepted then s.lastActivity=t; trainingContact(s,slot,p) end

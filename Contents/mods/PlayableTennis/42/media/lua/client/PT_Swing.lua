@@ -17,29 +17,10 @@ function PT_SwingAction:start()
     self:setOverrideHandModels(self.character:getPrimaryHandItem(), self.character:getSecondaryHandItem())
     self:setAnimVariable("PT_RacketStroke", true)
     self:setActionAnim("RemoveBushLongBlade")
-    -- Log the first started action, not merely a click queued by the client.
-    if not PTSwing.loggedStart then
-        PTSwing.loggedStart = true
-        print("[PlayableTennis] swing started (native-onehand): action="
-            ..tostring(self.character:getVariableString("PerformingAction"))
-            .." rightMask="..tostring(self.character:getVariableString("RightHandMask")))
-    end
 end
 -- The native node emits Chop; only ISRemoveBush gives that event world effects.
 -- This cosmetic action deliberately consumes it without changing the world.
 function PT_SwingAction:animEvent(event, parameter) end
-function PT_SwingAction:update()
-    if PTSwing.loggedPlayback then return end
-    self.ptDiagnosticTicks=(self.ptDiagnosticTicks or 0)+1
-    if self.ptDiagnosticTicks<4 then return end
-    PTSwing.loggedPlayback=true
-    -- Sample after animation evaluation so the log contains actual layer nodes.
-    local ok,debugText=pcall(function() return self.character:getAnimationDebug() end)
-    if ok and debugText then
-        local layers=tostring(debugText):match("^(.-)Variables:") or tostring(debugText)
-        print("[PlayableTennis] swing playback: "..layers)
-    end
-end
 function PT_SwingAction:adjustMaxTime(time) return time end
 function PT_SwingAction:new(character)
     local o = ISBaseTimedAction.new(self, character)

@@ -1,4 +1,4 @@
--- Owned prototype UI. The server alone decides contact, movement and scores.
+-- Tennis UI. The server alone decides contact, movement and scores.
 require "ISUI/ISPanel"
 require "ISUI/ISContextMenu"
 require "PT_Core"
@@ -34,7 +34,7 @@ local function equippedToStart(p)
 end
 local function mouseEligible(p)
     if not p or not C.session or not C.core then return false end
-    if C.waiting then return false,"Waiting for a second player. For solo testing, leave and choose Solo test." end
+    if C.waiting then return false,"Waiting for opponent." end
     if C.core.paused then return false,C.core.message or "Game paused. Both players must return with their rackets." end
     if C.core.phase=="finished" then return false,"Game finished. Use the court menu to join or start again." end
     if p:isDead() or p:getVehicle() then return false,"Stay alive and on foot to play tennis." end
@@ -92,10 +92,6 @@ local function join(id)
     C.joinPending = true
     send("join", { id = id })
 end
-local function startSolo(id)
-    C.joinPending=true
-    send("startSolo",{id=id})
-end
 local function removeCourt(id) send("remove", { id = id }) end
 local function canStartPractice()
     return not C.session or (C.core and C.core.phase=="finished")
@@ -117,7 +113,7 @@ function C.receive(command, args)
         C.joinPending=false
         notice(args.message)
     elseif command == "created" then
-        notice("Court "..tostring(args.id).." registered. Right-click > Playable Tennis > Join / Solo test.")
+        notice("Court "..tostring(args.id).." registered. Right-click > Playable Tennis > Join.")
     elseif command == "left" then
         if args.session and C.session and args.session ~= C.session then return end
         if C.session then C.retired[C.session] = true end
@@ -190,7 +186,7 @@ local function mouseAim()
         if c.mode=="wall" then scale=width*0.18
         else
             local even=(C.core.points[1]+C.core.points[2])%2==0
-            local server=C.core.testTarget and C.slot or C.core.server
+            local server=C.core.server
             local left=(server==1 and even) or (server==2 and not even)
             base=base+(left and 1 or -1)*width*0.25
             scale=width*0.1
@@ -202,7 +198,7 @@ local function input(command,selectedAim)
     if inputBlocked() then return end
     local eligible,reason=mouseEligible(player())
     if not eligible then
-        if reason then notice(reason); if command=="serve" then print("[PlayableTennis] serve blocked locally: "..reason) end end
+        if reason then notice(reason) end
         return
     end
     if command=="serve" and not equippedToStart(player()) then notice("Hold the Tennis Ball in your secondary hand to serve."); return end
@@ -216,9 +212,7 @@ local function input(command,selectedAim)
         return
     end
     C.seq = C.seq + 1
-    C.flashUntil = now() + 180
     swingAnimation()
-    if command=="serve" then print("[PlayableTennis] serve sent: session="..tostring(C.session).." seq="..C.seq) end
     send(command, { aim = selectedAim or aim(), seq = C.seq, session = C.session })
 end
 local function mouseDown()
@@ -256,14 +250,8 @@ local function drawCourt()
         return PTWall.validateCourt(c,function(x,y,z) return getCell():getGridSquare(x,y,z) end)
     end)
 end
-local function feed()
-    if not C.session or not C.core or not C.core.testTarget or C.core.phase~="ready" or inputBlocked() then return end
-    if C.core.feedReceiverReady==false then notice("Move into the blue return area with a sports racket before requesting a feed."); return end
-    C.seq=C.seq+1
-    send("feed",{session=C.session,seq=C.seq,aim=0})
-end
 local function contextMenu(playerIndex, context, objects, test)
-    -- One keyboard and HUD owner per client; split-screen is outside this prototype.
+    -- One keyboard and HUD owner per client; split-screen is not supported.
     if playerIndex ~= 0 then return end
     if test then return end
     local p = player()
@@ -289,7 +277,6 @@ local function contextMenu(playerIndex, context, objects, test)
             and math.abs(p:getX() - court.x1) < 100 and math.abs(p:getY() - court.y1) < 100 then
             if court.mode=="tennis" then
                 menu:addOption("Join " .. tostring(court.id) .. " (" .. tostring(court.mode) .. ")",court.id,join)
-                if canStartPractice() then menu:addOption("Solo test: diagonal return target",court.id,startSolo) end
             end
             menu:addOption("Remove " .. tostring(court.id) .. " (owner/admin; ends its game)", court.id, removeCourt)
             count = count + 1
@@ -297,7 +284,6 @@ local function contextMenu(playerIndex, context, objects, test)
         end
     end
     if C.session then
-        if C.core and C.core.testTarget then menu:addOption("Test: send a ball from opponent side",nil,feed) end
         menu:addOption("Serve [K]", "serve", input)
         menu:addOption("Swing [J]", "swing", input)
         menu:addOption("Leave court", nil, leave)
@@ -438,7 +424,7 @@ function Overlay:render()
                 self:worldLine(court.x2,court.y2,court.x1,court.y2,court.z,0.6,0.8,1,true)
                 self:worldLine(court.x1,court.y2,court.x1,court.y1,court.z,0.6,0.8,1,true)
                 local lx,ly=isoToScreenX(0,court.x1,court.y1,court.z),isoToScreenY(0,court.x1,court.y1,court.z)
-                self:drawText("Court "..tostring(court.id).." | Right-click: Join / Solo test",lx,ly-20,0.6,0.8,1,1,UIFont.Small)
+                self:drawText("Court "..tostring(court.id).." | Right-click: Join",lx,ly-20,0.6,0.8,1,1,UIFont.Small)
             end
         end
     end
@@ -446,16 +432,6 @@ function Overlay:render()
         local court = core.court
         local x1,y1,x2,y2,z = court.x1,court.y1,court.x2,court.y2,court.z
         if math.floor(player():getZ()) == z then
-            local target=core.testTarget
-            if target then
-                for i=0,15 do
-                    local a,b=i*math.pi/8,(i+1)*math.pi/8
-                    self:worldLine(target.x+math.cos(a)*target.radius,target.y+math.sin(a)*target.radius,
-                        target.x+math.cos(b)*target.radius,target.y+math.sin(b)*target.radius,z,1,0.75,0.15)
-                end
-                local tx,ty=project(target.x,target.y,z)
-                self:drawText("TEST RETURN TARGET",tx-65,ty-25,1,0.8,0.2,1,UIFont.Small)
-            end
             local mx,my = (x1+x2)/2,(y1+y2)/2
             if court.mode == "tennis" then
                 self:worldLine(x1,y1,x2,y1,z,1,1,1)
@@ -466,7 +442,7 @@ function Overlay:render()
                 self:worldLine(x1,(y1+my)/2,x2,(y1+my)/2,z,1,1,1)
                 self:worldLine(x1,(y2+my)/2,x2,(y2+my)/2,z,1,1,1)
                 self:worldLine(mx,(y1+my)/2,mx,(y2+my)/2,z,1,1,1)
-                if core.phase=="ready" and not C.waiting and (core.testTarget or core.server==C.slot) then
+                if core.phase=="ready" and not C.waiting and (core.server==C.slot) then
                     local a=PTCore.serveArea(core,C.slot)
                     self:worldLine(a.x1,a.y1,a.x2,a.y1,z,0.2,1,0.4)
                     self:worldLine(a.x2,a.y1,a.x2,a.y2,z,0.2,1,0.4)
@@ -476,7 +452,7 @@ function Overlay:render()
                     self:drawText("Serve Zone",sx-35,sy-25,0.2,1,0.4,1,UIFont.Small)
                 end
                 if core.phase=="ready" then
-                    local a=PTCore.receiveArea(core,core.testTarget and 2 or core.server)
+                    local a=PTCore.receiveArea(core,core.server)
                     self:worldLine(a.x1,a.y1,a.x2,a.y1,z,0.3,0.7,1)
                     self:worldLine(a.x2,a.y1,a.x2,a.y2,z,0.3,0.7,1)
                     self:worldLine(a.x2,a.y2,a.x1,a.y2,z,0.3,0.7,1)
@@ -518,11 +494,11 @@ function Overlay:render()
         else
             local names=C.names or {}
             local function name(slot)
-                return names[slot] or (core.testTarget and slot==2 and "Practice Target" or "Opponent")
+                return names[slot] or "Player "..tostring(slot)
             end
-            local serving=core.testTarget and C.slot or core.server
+            local serving=core.server
             local status
-            if core.phase=="finished" then status=name(core.winner or serving).." wins"
+            if core.phase=="finished" then status=name(core.winner or serving).." Win"
             elseif C.waiting then status="Waiting for opponent"
             elseif core.paused then status="Paused - return to court with your racket"
             elseif core.phase=="ready" then
@@ -543,10 +519,9 @@ function Overlay:render()
         local friendly={
             ["Swing cooldown."]="Wait a moment before swinging again.",
             ["Ball is outside racket height (0.15 to 2.4)."]="The ball is too high or too low to hit.",
-            ["Waiting for a second player. For solo testing, leave and choose Solo test."]="Waiting for opponent.",
+            ["Waiting for opponent."]="Waiting for opponent.",
             ["Hold RMB while clicking LMB to serve, or press K."]="Hold right-click, then left-click to serve.",
             ["Waiting for the receiver: stand in the blue return area with a sports racket."]="The receiver must enter Receive Zone with a racket.",
-            ["Move into the blue return area with a sports racket before requesting a feed."]="Enter Receive Zone with your racket first.",
             ["Equip an intact SPORTS Tennis Racket in your primary hand."]="Hold a usable sports racket in your right hand.",
             ["Hold the Tennis Ball in your secondary hand to serve."]="Hold a tennis ball in your left hand to serve.",
             ["Hold a Tennis Ball in your secondary hand to serve."]="Hold a tennis ball in your left hand to serve.",

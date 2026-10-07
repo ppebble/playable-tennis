@@ -1,6 +1,6 @@
-# Architecture — 0.2.2 development snapshot
+# Architecture — 0.2.2
 
-Player-versus-player tennis and solo wall practice, without AI. Version 0.2.2 is retained during testing; this snapshot is not a finalized release. The native server owns gameplay. Tests against source and engine mocks do not establish live multiplayer compatibility.
+Player-versus-player tennis and independent wall practice, without AI. The native server owns gameplay. Tests against source and engine mocks do not establish live multiplayer compatibility.
 
 ## Modules
 
@@ -23,9 +23,9 @@ Tennis supports north–south and east–west rectangles with a virtual net and 
 
 ## Persistence and compatibility
 
-ModData PlayableTennis_v1 stores registered tennis courts, personal wallBest records and unfinished tennis point checkpoints keyed by court. Checkpoints hold plain copied core data and reserved usernames, never live player objects or a ball in flight. Same-username participants resume after interruption or restart; equipment changes, death, disconnect, vehicle entry, departure, disabled settings and temporarily unavailable court geometry pause tennis without awarding a point. Explicit Leave, court removal/replacement or single-game victory clear that checkpoint. Temporary wall sessions still close on these interruptions and do not resume. Old registered wall courts are retained only for owner/admin removal.
+ModData PlayableTennis_v1 stores registered tennis courts, personal wallBest records and unfinished tennis point checkpoints keyed by court. Checkpoints hold plain copied core data and reserved usernames, never live player objects or a ball in flight. Same-username participants resume after interruption or restart; equipment changes, death, disconnect, vehicle entry, departure, disabled settings and temporarily unavailable court geometry pause tennis without awarding a point. Explicit Leave, court removal/replacement or single-game victory clear that checkpoint. Temporary wall sessions still close on these interruptions and do not resume. Old registered wall courts are retained only for owner/admin removal. Legacy solo-test checkpoints are discarded while registered courts and ordinary two-player checkpoints remain intact.
 
-Standalone namespaced Lua, no Java patches or vanilla method overrides. Existing attacks or another mod's direct attack calls are not cancelled. Server and all clients need identical files; version labels alone cannot distinguish development snapshots. No split-screen support. No custom audio/assets are bundled; the sports item references installed native assets. Latest held appearance, swing blending and remote action/item replication still need live verification.
+Standalone namespaced Lua, no Java patches or vanilla method overrides. Existing attacks or another mod's direct attack calls are not cancelled. Server and all clients need identical files; verify exact file identity when checking deployment. No split-screen support. No custom audio/assets are bundled; the sports item references installed native assets. Latest held appearance, swing blending and remote action/item replication still need live verification.
 
 ## Installed-source evidence
 

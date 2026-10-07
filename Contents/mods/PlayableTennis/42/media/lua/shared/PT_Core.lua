@@ -28,7 +28,6 @@ local function resetBall(s, message)
     s.servicePending, s.wallReady = false, false
     s.rally = 0
     s.message = message
-    if s.testTarget then PTCore.refreshTestTarget(s) end
 end
 local function point(s, winner, reason)
     s.points[winner] = s.points[winner] + 1
@@ -220,9 +219,7 @@ end
 function PTCore.serve(s, slot, px, py, aim)
     if not validSlot(slot) or not finite(px) or not finite(py) or not validAim(aim) then return reject(s, "Invalid serve input.") end
     if s.phase ~= "ready" then return reject(s, "Wait until ready to serve.") end
-    -- The explicit solo feed substitutes slot 2, but cannot lock the real
-    -- tester out of starting a subsequent point with their own serve.
-    if slot ~= s.server and not (s.testTarget and slot == 1) then return reject(s, "The other player serves.") end
+    if slot ~= s.server then return reject(s, "The other player serves.") end
     local c, wall = s.court, s.court.mode == "wall"
     local baseline = (wall or slot == 2) and c.y2 or c.y1
     if c.freeWall then baseline=py end
@@ -245,10 +242,6 @@ function PTCore.serve(s, slot, px, py, aim)
     end
     local tx, ty = PTCore.aimTarget(s, slot, aim, true)
     s.server = slot
-    if s.testTarget then
-        PTCore.refreshTestTarget(s)
-        if slot == 2 then s.testTarget.x,s.testTarget.y=px,baseline end
-    end
     launch(s, px, baseline + ((wall or slot == 2) and -0.1 or 0.1), 1.4, tx, ty, wall)
     s.phase, s.lastHit, s.bounces = "rally", slot, 0
     s.servicePending, s.serveFromLeft, s.wallReady = not wall, fromLeft, false
@@ -300,34 +293,6 @@ function PTCore.receiverInArea(s, servingSlot, x, y)
     local a=PTCore.receiveArea(s,servingSlot)
     return a~=nil and finite(x) and finite(y) and x>=a.x1 and x<=a.x2 and y>=a.y1 and y<=a.y2
 end
-function PTCore.refreshTestTarget(s)
-    if not s.testTarget or s.phase~="ready" then return end
-    local a=PTCore.receiveArea(s,1)
-    s.testTarget.x,s.testTarget.y=a.x,a.y
-end
--- Explicit test fixture, never enabled by normal match creation.
-function PTCore.enableTestTarget(s)
-    if s.court.mode ~= "tennis" or s.phase ~= "ready" then return false end
-    s.testTarget = {radius = s.options.hitRadius}
-    PTCore.refreshTestTarget(s)
-    return true
-end
-function PTCore.feedTestTarget(s)
-    if not s.testTarget or s.phase ~= "ready" then return false end
-    -- A deliberate test-only feed may substitute the scheduled server.
-    s.server = 2
-    s.faults = 0
-    local even = (s.points[1]+s.points[2])%2 == 0
-    local x = midX(s)+(even and 1 or -1)*(s.court.x2-s.court.x1)*0.25
-    return PTCore.serve(s,2,x,s.court.y2,0)
-end
-local function returnFromTestTarget(s)
-    local target,b = s.testTarget,s.ball
-    if not target or not b or s.phase ~= "rally" or s.lastHit ~= 1 or s.servicePending then return end
-    if b.y <= midY(s) or b.z < 0.15 or b.z > 2.4 or s.clock-s.lastSwing[2] < 0.25 then return end
-    if (target.x-b.x)^2+(target.y-b.y)^2 > s.options.hitRadius^2 then return end
-    PTCore.swing(s,2,target.x,target.y,0)
-end
 function PTCore.step(s, dt)
     if not finite(dt) or dt <= 0 then return end
     -- Avoid an unbounded catch-up loop after stalls; server publishes fresh state.
@@ -335,7 +300,7 @@ function PTCore.step(s, dt)
     while s.accumulator + 0.000000001 >= STEP do
         s.accumulator = s.accumulator - STEP
         s.clock = s.clock + STEP
-        if s.phase == "rally" then integrate(s, STEP); returnFromTestTarget(s) end
+        if s.phase == "rally" then integrate(s, STEP) end
     end
 end
 function PTCore.snapshot(s) return copy(s) end

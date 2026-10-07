@@ -267,49 +267,10 @@ check(not PTCore.serve(outside,1,0,14.01,0),"serve cannot extend normal depth pa
 outside.phase,outside.wallReady,outside.clock="rally",true,2
 outside.ball={x=6.4,y=14,z=1,vx=0,vy=1,vz=0}
 check(not PTCore.swing(outside,1,6.4,14,0),"swing outside trapezoid is rejected")
-local solo = new()
-check(not PTCore.feedTestTarget(solo), "normal match cannot feed")
-check(PTCore.enableTestTarget(solo), "tennis enables explicit target")
-check(solo.testTarget.x > 4 and solo.testTarget.y == 13.5, "target starts in diagonal receiving half")
-check(PTCore.feedTestTarget(solo) and solo.server == 2 and solo.servicePending, "feed uses legal slot two serve")
-check(not PTCore.feedTestTarget(solo), "feed cannot interrupt rally")
-local restart = new()
-PTCore.enableTestTarget(restart)
-check(PTCore.feedTestTarget(restart), "solo restart fixture feeds")
-for i=1,1200 do PTCore.step(restart,1/120) end
-check(restart.phase=="ready" and restart.server==2,"unreturned feed leaves opponent scheduled")
-check(not PTCore.serve(restart,1,2,9,0) and restart.server==2,"invalid solo restart does not change scheduled server")
-local restartX=(restart.points[1]+restart.points[2])%2==0 and 2 or 6
-check(PTCore.serve(restart,1,restartX,0,0) and restart.server==1,"solo player can serve after opponent feed ends")
 local normalRestart=new(); normalRestart.server=2
 check(not PTCore.serve(normalRestart,1,2,0,0) and normalRestart.server==2,"normal match preserves opponent service turn")
-for _,pending in ipairs({true,false}) do
-    solo.phase,solo.servicePending,solo.lastHit,solo.clock="rally",pending,1,2
-    solo.ball={x=solo.testTarget.x,y=solo.testTarget.y,z=1,vx=0,vy=0,vz=0}
-    PTCore.step(solo,1/120)
-    check(solo.lastHit==(pending and 1 or 2),"target respects serve bounce")
-end
-solo.lastHit,solo.servicePending,solo.clock=1,false,3
-solo.ball={x=7.8,y=16,z=1,vx=0,vy=0,vz=0}
-PTCore.step(solo,1/120)
-check(solo.lastHit==1,"target cannot chase side shots")
-solo.ball={x=solo.testTarget.x,y=16,z=3,vx=0,vy=0,vz=0}
-PTCore.step(solo,1/120)
-check(solo.lastHit==1,"target cannot hit excessive height")
-solo.phase="finished"
-check(not PTCore.feedTestTarget(solo),"finished game cannot feed")
-local rallyTest=new()
-PTCore.enableTestTarget(rallyTest)
-rallyTest.phase,rallyTest.lastHit,rallyTest.clock="rally",2,1
-rallyTest.ball={x=4,y=3,z=1.2,vx=0,vy=0,vz=0}
-check(PTCore.swing(rallyTest,1,4,3,2/3),"player aims normal shot at fixed target")
-for i=1,600 do
-    PTCore.step(rallyTest,1/120)
-    if rallyTest.lastHit==2 or rallyTest.phase~="rally" then break end
-end
-check(rallyTest.lastHit==2 and rallyTest.shotId==2,"real trajectory reaches target and returns without teleporting")
 
--- Live solo failure: a serve outside the baseline must stay rejected,
+-- Baseline validation: a serve outside the baseline must stay rejected,
 -- and the highlighted destination must actually accept the serve.
 for slot=1,2 do
     for point=0,1 do
@@ -337,30 +298,6 @@ for slot=1,2 do
         check(not PTCore.receiverInArea(state,slot,area.x,slot==1 and 19.51 or -1.51),"receiver behind allowed baseline margin is not ready")
     end
 end
-for _,length in ipairs({12,18,30}) do
-    for _,speed in ipairs({6,9,14}) do
-        for parity=0,1 do
-            local state=PTCore.new({x1=0,x2=8,y1=0,y2=length,mode="tennis"},{ballSpeed=speed})
-            state.points[1]=parity; PTCore.enableTestTarget(state)
-            local area=PTCore.serveArea(state,1)
-            check(PTCore.serve(state,1,(area.x1+area.x2)/2,0,0),"solo center serve launches")
-            local tx,ty=state.testTarget.x,state.testTarget.y
-            local returned,stationary=false,true
-            for i=1,1200 do
-                PTCore.step(state,1/120)
-                if state.lastHit==2 then returned=true; break end
-                if state.phase~="rally" then break end
-                stationary=stationary and state.testTarget.x==tx and state.testTarget.y==ty
-            end
-            check(returned,"real center serve reaches diagonal target for both sides across supported lengths/speeds")
-            check(stationary,"solo target remains fixed throughout rally")
-            for i=1,1800 do PTCore.step(state,1/120) end
-            area=PTCore.receiveArea(state,1)
-            check(state.phase=="ready" and state.testTarget.x==area.x and state.testTarget.y==area.y,"point reset updates target to next service diagonal")
-        end
-    end
-end
-
 -- Bounded tennis trajectory across new sizes and legacy saved extremes.
 for _,dimensions in ipairs({{8,18},{10,20},{14,30},{6,12}}) do
     local width,length=dimensions[1],dimensions[2]
@@ -438,7 +375,9 @@ for _,dimensions in ipairs({{8,18},{10,20},{14,30}}) do
         end
     end
     local feed=PTCore.new({mode="tennis",x1=0,x2=width,y1=0,y2=length})
-    PTCore.enableTestTarget(feed); PTCore.feedTestTarget(feed)
+    feed.server=2
+    local serving=PTCore.serveArea(feed,2)
+    check(PTCore.serve(feed,2,(serving.x1+serving.x2)/2,serving.baseline,0),"opponent starts normal serve")
     local receive=PTCore.receiveArea(feed,2)
     local returned=false
     for i=1,600 do

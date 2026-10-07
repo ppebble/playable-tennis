@@ -205,33 +205,18 @@ for _,mode in ipairs({'wall','tennis'}) do
     check(#ClientMock.sent==before,mode..' missed point resets RMB requirement')
     PTClient.receive('left',{session=id})
 end
-PTClient.receive('list',{courts={{id='solo-court',x1=0,y1=0,x2=8,y2=18,z=0,mode='tennis'}}})
-local soloMenu=ClientMock.menu()
-Events.OnFillWorldObjectContextMenu.callback(0,soloMenu,{{getSquare=function() return square end}},false)
-local soloOption
-for _,o in ipairs(soloMenu.submenu.options) do if o.name=='Solo test: diagonal return target' then soloOption=o end end
-check(soloOption~=nil,'solo test available for saved court')
-soloOption.callback(soloOption.target)
-check(last().command=='startSolo' and last().args.id=='solo-court','solo option sends explicit test mode')
-local targetState=snapshot(1,'ready',nil,'solo-ui')
-targetState.core.court.id='solo-court'
-targetState.core.testTarget={x=2.4,y=16,radius=1.8}
+PTClient.receive('list',{courts={{id='play-court',x1=0,y1=0,x2=8,y2=18,z=0,mode='tennis'}}})
+local playMenu=ClientMock.menu()
+Events.OnFillWorldObjectContextMenu.callback(0,playMenu,{{getSquare=function() return square end}},false)
+for _,o in ipairs(playMenu.submenu.options) do
+    check(not string.find(o.name,'Solo test',1,true) and not string.find(o.name,'Test:',1,true),'release menu excludes test modes')
+end
+local targetState=snapshot(1,'ready',nil,'play-ui')
+targetState.core.court.id='play-court'
 PTClient.receive('state',targetState)
-soloMenu=ClientMock.menu()
-Events.OnFillWorldObjectContextMenu.callback(0,soloMenu,{{getSquare=function() return square end}},false)
-local feedOption
-for _,o in ipairs(soloMenu.submenu.options) do if o.name=='Test: send a ball from opponent side' then feedOption=o end end
-check(feedOption~=nil,'test-only opponent feed menu visible')
-feedOption.callback()
-check(last().command=='feed' and last().args.session=='solo-ui','feed carries current session and sequence')
-PTClient.core.feedReceiverReady=false; before=#ClientMock.sent
-feedOption.callback()
-check(#ClientMock.sent==before and string.find(PTClient.message,'blue return area',1,true),'solo feed waits for tester to enter receive area')
-PTClient.core.feedReceiverReady=true; feedOption.callback()
-check(#ClientMock.sent==before+1 and last().command=='feed','solo feed enabled after tester is ready')
 ClientMock.buttons={}; ClientMock.lines={}; PTClient.overlay:render()
-check(#ClientMock.lines==32,'target reach circle, serve box and feed receive area drawn with rectangular court')
-check(ClientMock.lines[25].x==17 and ClientMock.lines[25].y==-6.5,'solo serve box uses north baseline and west half')
+check(#ClientMock.lines==16,'normal court draws serve and receive zones without test target')
+check(ClientMock.lines[9].x==17 and ClientMock.lines[9].y==-6.5,'serve zone uses north baseline and west half')
 PTCourtSelector.begin(p,function() end); before=#ClientMock.sent
 ClientMock.buttons={[0]=true,[1]=true}; click(); Events.OnKeyPressed.callback(Keyboard.KEY_K)
 check(#ClientMock.sent==before,'selection does not send sports mouse or keyboard commands')
@@ -239,13 +224,11 @@ PTCourtSelector.cancel()
 ClientMock.selectionCooldown=true; before=#ClientMock.sent; click()
 check(#ClientMock.sent==before,'selection completion click cannot trigger a sports stroke')
 ClientMock.selectionCooldown=false
--- A solo feed can leave slot 2 scheduled; the tester's own serve preview must
--- still aim diagonally from slot 1, and local input rejection must be visible.
-targetState=snapshot(2,'ready',nil,'solo-ui')
-targetState.core.testTarget={x=2.4,y=16,radius=1.8}; targetState.core.server=2
+-- Normal server previews aim diagonally from the serving player's side.
+targetState=snapshot(2,'ready',nil,'play-ui')
 PTClient.receive('state',targetState)
 ClientMock.mouseX=6; click()
-check(last().command=='serve' and last().args.aim==0,'solo serve aims from real player after feed')
+check(last().command=='serve' and last().args.aim==0,'serve aims from scheduled player')
 local savedSwing=PTSwing.play
 PTSwing.play=function() error('cosmetic failure fixture') end
 before=#ClientMock.sent; click()
@@ -257,7 +240,7 @@ p.x=nil; p.noRacket=true; click()
 check(#ClientMock.sent==before and string.find(PTClient.message,'SPORTS Tennis Racket',1,true),'missing racket reports why serve cannot start')
 p.noRacket=false; ClientMock.buttons={[0]=true}; click()
 check(string.find(PTClient.message,'Hold RMB',1,true),'ready click explains required serve input')
-PTClient.receive('left',{session='solo-ui'})
+PTClient.receive('left',{session='play-ui'})
 ClientMock.lines={}; PTClient.overlay:render()
 check(#ClientMock.lines==4,'registered idle court displays just its four boundary edges')
 local wallView=snapshot(1,'ready',nil,'wall-boundary')
@@ -316,26 +299,26 @@ end
 check(pointScore and not overall,'HUD shows point score without requiring overall games tally')
 check(pausedMessage,'pause explanation is not overwritten by receiver readiness')
 
-paused.revision=2; paused.core.paused=false; paused.core.phase='finished'; paused.core.winner=2
+paused.players={'Alice','Bob'}; paused.revision=2; paused.core.paused=false; paused.core.phase='finished'; paused.core.winner=2
 PTClient.receive('state',paused)
 labels={}; PTClient.overlay:render()
 local winner=false
-for _,text in ipairs(labels) do if string.find(text,'Opponent wins',1,true) then winner=true end end
+for _,text in ipairs(labels) do if string.find(text,'Bob Win',1,true) then winner=true end end
 check(winner,'finished game clearly labels the winner without an overall score')
 
 PTClient.receive('list',{courts={{id='again',x1=0,y1=0,x2=8,y2=18,z=0,mode='tennis'}}})
 local againMenu=ClientMock.menu()
 Events.OnFillWorldObjectContextMenu.callback(0,againMenu,{{getSquare=function() return square end}},false)
-local soloOption,wallOption,removeOption
+local joinOption,wallOption,removeOption
 for _,option in ipairs(againMenu.submenu.options) do
-    if option.name=='Solo test: diagonal return target' then soloOption=option end
+    if string.find(option.name,'Join again',1,true) then joinOption=option end
     if string.find(option.name,'Start wall practice',1,true) then wallOption=option end
     if string.find(option.name,'Remove again',1,true) then removeOption=option end
 end
-check(soloOption and wallOption,'finished game exposes both practice starts without leave')
+check(joinOption and wallOption,'finished game exposes join and wall practice without leave')
 check(removeOption and string.find(removeOption.name,'ends its game',1,true),'removal menu explains active game termination')
-soloOption.callback(soloOption.target)
-check(last().command=='startSolo' and PTClient.joinPending,'finished game can request another solo game directly')
+joinOption.callback(joinOption.target)
+check(last().command=='join' and PTClient.joinPending,'finished game can join a new game directly')
 -- A wall restart must accept the server response from its new session as well.
 ClientMock.time=ClientMock.time+600
 wallOption.callback(wallOption.target)

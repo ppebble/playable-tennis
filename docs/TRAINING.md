@@ -4,7 +4,7 @@ The latest user decision excludes exercise fatigue entirely. This feature only a
 
 ## Rate and eligibility
 
-Default raw requests per real minute of eligible rally time are Fitness20 and Nimble3. The server tracks each real participant independently, after an accepted serve/return, and stops crediting after six simulation seconds without another accepted stroke. Waiting, paused, finished, unequipped, dead, out-of-court or disconnected participants do not earn XP. Automatic solo-target strokes do not award a human XP. A server stall does not yield catch-up XP. Whole seconds are credited; a subsecond remainder is dropped when its session ends or its player object is replaced.
+Default raw requests per real minute of eligible rally time are Fitness20 and Nimble3. The server tracks each real participant independently, after an accepted serve/return, and stops crediting after six simulation seconds without another accepted stroke. Waiting, paused, finished, unequipped, dead, out-of-court or disconnected participants do not earn XP. A server stall does not yield catch-up XP. Whole seconds are credited; a subsecond remainder is dropped when its session ends or its player object is replaced.
 
 FitnessXPMultiplier and NimbleXPMultiplier are independent double sandbox settings, default1, range0–100. Zero skips that XP call. Fractions are supported. Current settings apply at each payout. Native addXp is used on server/SP only, retaining native XP modifiers and nutrition checks. The XP layer adds no Lifestyle dependency and changes no upstream files.
 

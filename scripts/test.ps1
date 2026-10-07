@@ -98,3 +98,15 @@ foreach ($file in Get-ChildItem $PSScriptRoot -Filter '*.ps1') {
     if ($errors.Count) { throw "PowerShell parse error: $($file.Name)" }
 }
 Write-Output 'PASS production Lua syntax, EN/KO translations, non-weapon item/appearance contract, PowerShell syntax'
+$releaseLua = Get-ChildItem (Join-Path $mod 'media/lua') -Recurse -Filter '*.lua'
+foreach ($file in $releaseLua) {
+    $text = Get-Content -LiteralPath $file.FullName -Raw
+    if ($text -match 'startSolo|feedTestTarget|enableTestTarget|refreshTestTarget|returnFromTestTarget|feedReceiverReady|SOLO TEST|TEST RETURN TARGET|getAnimationDebug|loggedPlayback|loggedStart') {
+        throw "Development feature remains in release: $($file.Name)"
+    }
+}
+$payload = Get-ChildItem (Join-Path $repo 'Contents') -Recurse -File
+if ($payload | Where-Object { $_.Name -match '\.test\.|bootstrap|\.java$|\.class$' }) {
+    throw 'Development test files must stay outside release Contents'
+}
+Write-Output 'PASS release excludes test commands, target simulation, animation diagnostics and test payloads'
