@@ -230,6 +230,24 @@ PTCourtSelector.cancel()
 ClientMock.selectionCooldown=true; before=#ClientMock.sent; click()
 check(#ClientMock.sent==before,'selection completion click cannot trigger a sports stroke')
 ClientMock.selectionCooldown=false
+-- A solo feed can leave slot 2 scheduled; the tester's own serve preview must
+-- still aim diagonally from slot 1, and local input rejection must be visible.
+targetState=snapshot(2,'ready',nil,'solo-ui')
+targetState.core.testTarget={x=2.4,y=16,radius=1.8}; targetState.core.server=2
+PTClient.receive('state',targetState)
+ClientMock.mouseX=6; click()
+check(last().command=='serve' and last().args.aim==0,'solo serve aims from real player after feed')
+local savedSwing=PTSwing.play
+PTSwing.play=function() error('cosmetic failure fixture') end
+before=#ClientMock.sent; click()
+check(#ClientMock.sent==before+1 and last().command=='serve','cosmetic animation failure cannot swallow serve command')
+PTSwing.play=savedSwing
+p.x=30; before=#ClientMock.sent; click()
+check(#ClientMock.sent==before and string.find(PTClient.message,'Return to the court',1,true),'outside court reports why serve cannot start')
+p.x=nil; p.noRacket=true; click()
+check(#ClientMock.sent==before and string.find(PTClient.message,'SPORTS Tennis Racket',1,true),'missing racket reports why serve cannot start')
+p.noRacket=false; ClientMock.buttons={[0]=true}; click()
+check(string.find(PTClient.message,'Hold RMB',1,true),'ready click explains required serve input')
 PTClient.receive('left',{session='solo-ui'})
 ClientMock.lines={}; PTClient.overlay:render()
 check(#ClientMock.lines==4,'registered idle court displays just its four boundary edges')

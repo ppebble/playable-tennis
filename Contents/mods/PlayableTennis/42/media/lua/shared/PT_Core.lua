@@ -179,7 +179,9 @@ end
 function PTCore.serve(s, slot, px, py, aim)
     if not validSlot(slot) or not finite(px) or not finite(py) or not validAim(aim) then return reject(s, "Invalid serve input.") end
     if s.phase ~= "ready" then return reject(s, "Wait until ready to serve.") end
-    if slot ~= s.server then return reject(s, "The other player serves.") end
+    -- The explicit solo feed substitutes slot 2, but cannot lock the real
+    -- tester out of starting a subsequent point with their own serve.
+    if slot ~= s.server and not (s.testTarget and slot == 1) then return reject(s, "The other player serves.") end
     local c, wall = s.court, s.court.mode == "wall"
     local baseline = (wall or slot == 2) and c.y2 or c.y1
     if c.freeWall then baseline=py end
@@ -196,6 +198,7 @@ function PTCore.serve(s, slot, px, py, aim)
         return reject(s, fromLeft and "Serve from the left half of your baseline." or "Serve from the right half of your baseline.")
     end
     local tx, ty = PTCore.aimTarget(s, slot, aim, true)
+    s.server = slot
     launch(s, px, baseline + ((wall or slot == 2) and -0.1 or 0.1), 1.4, tx, ty, wall)
     s.phase, s.lastHit, s.bounces = "rally", slot, 0
     s.servicePending, s.serveFromLeft, s.wallReady = not wall, fromLeft, false

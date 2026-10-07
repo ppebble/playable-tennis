@@ -68,6 +68,7 @@ $swingPath = Join-Path $mod 'media/AnimSets/player/maskingright/PT_TennisSwing.x
 # Both layers need an owned node: actions otherwise selects Bob_EmoteSurrender;
 # run/sprint exclude actions and require the maskingright node instead.
 foreach ($node in @($swing.animNode, $actionSwing.animNode)) {
+    if ([int]$node.m_ConditionPriority -ne 1) { throw 'Owned swing must win native bag/aim node selection' }
     if ($node.m_AnimName -ne 'Bob_Attack1Hand01_Hit' -or $node.m_Events) { throw 'Swing must use event-free native one-handed attack' }
     $nodeConditions = @{}
     foreach ($condition in $node.m_Conditions) { $nodeConditions[$condition.m_Name] = $condition.m_Value }

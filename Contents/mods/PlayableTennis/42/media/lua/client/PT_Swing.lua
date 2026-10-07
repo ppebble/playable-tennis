@@ -13,6 +13,13 @@ function PT_SwingAction:start()
     self.action:setUseProgressBar(false)
     self.action:setBlockMovementEtc(false)
     self:setActionAnim("PT_TennisSwing")
+    -- Log the first started action, not merely a click queued by the client.
+    if not PTSwing.loggedStart then
+        PTSwing.loggedStart = true
+        print("[PlayableTennis] swing started (selection-priority-1): action="
+            ..tostring(self.character:getVariableString("PerformingAction"))
+            .." rightMask="..tostring(self.character:getVariableString("RightHandMask")))
+    end
 end
 function PT_SwingAction:adjustMaxTime(time) return time end
 function PT_SwingAction:new(character)

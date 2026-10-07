@@ -220,6 +220,10 @@ function S.dispatch(p,command,args)
             command=="swing" and from and from.y or py,tx,ty) then fail(p,"The shot path to the wall is obstructed."); return end
     end
     local accepted=PTCore[command](s.core,slot,px,py,args.aim)
+    if command=="serve" then
+        print("[PlayableTennis] serve "..(accepted and "accepted" or "rejected")..": session="..s.id.." seq="..args.seq.." | "..tostring(s.core.message))
+        if not accepted then fail(p,s.core.message) end
+    end
     if accepted then s.lastActivity=t end
     publish(s)
 end

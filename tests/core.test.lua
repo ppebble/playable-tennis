@@ -273,6 +273,16 @@ check(PTCore.enableTestTarget(solo), "tennis enables explicit target")
 check(solo.testTarget.x < 4 and solo.testTarget.y == 16, "target far left fixed position")
 check(PTCore.feedTestTarget(solo) and solo.server == 2 and solo.servicePending, "feed uses legal slot two serve")
 check(not PTCore.feedTestTarget(solo), "feed cannot interrupt rally")
+local restart = new()
+PTCore.enableTestTarget(restart)
+check(PTCore.feedTestTarget(restart), "solo restart fixture feeds")
+for i=1,1200 do PTCore.step(restart,1/120) end
+check(restart.phase=="ready" and restart.server==2,"unreturned feed leaves opponent scheduled")
+check(not PTCore.serve(restart,1,2,9,0) and restart.server==2,"invalid solo restart does not change scheduled server")
+local restartX=(restart.points[1]+restart.points[2])%2==0 and 2 or 6
+check(PTCore.serve(restart,1,restartX,0,0) and restart.server==1,"solo player can serve after opponent feed ends")
+local normalRestart=new(); normalRestart.server=2
+check(not PTCore.serve(normalRestart,1,2,0,0) and normalRestart.server==2,"normal match preserves opponent service turn")
 for _,pending in ipairs({true,false}) do
     solo.phase,solo.servicePending,solo.lastHit,solo.clock="rally",pending,1,2
     solo.ball={x=solo.testTarget.x,y=solo.testTarget.y,z=1,vx=0,vy=0,vz=0}

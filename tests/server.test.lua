@@ -295,6 +295,16 @@ command(a,"feed",{session=s.id,seq=1,aim=0})
 check(s.core.ball==fed,"duplicate feed cannot reset ball")
 command(a,"feed",{session=s.id,seq=2,aim=0})
 check(s.core.ball==fed,"feed during rally rejected")
+for i=1,1200 do PTCore.step(s.core,1/120) end
+check(s.core.phase=="ready" and s.core.server==2,"server fixture reaches ready after feed")
+a.x,a.y=102,109
+command(a,"serve",{session=s.id,seq=3,aim=0})
+check(s.core.phase=="ready" and s.core.server==2,"invalid solo baseline retains scheduled server")
+local rejection=M.packets[#M.packets-1]
+check(rejection.command=="error" and string.find(rejection.args.message,'baseline',1,true),"baseline rejection emits visible error before state")
+a.x=(s.core.points[1]+s.core.points[2])%2==0 and 102 or 106; a.y=100
+command(a,"serve",{session=s.id,seq=4,aim=0})
+check(s.core.phase=="rally" and s.core.server==1 and s.core.lastHit==1,"solo server accepts human serve after feed")
 M.square(103,105,0).solid=true
 create(a)
 check(S.members.alpha==s and db().courts[id],"invalid replacement preserves old court session")

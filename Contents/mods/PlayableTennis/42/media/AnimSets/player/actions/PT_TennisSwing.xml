@@ -2,6 +2,8 @@
 <animNode>
     <m_Name>PT_TennisSwing</m_Name>
     <m_Priority>10</m_Priority>
+    <!-- Selection priority is separate from layer priority; beat bag/aim masks. -->
+    <m_ConditionPriority>1</m_ConditionPriority>
     <m_AnimName>Bob_Attack1Hand01_Hit</m_AnimName>
     <m_BlendTime>0.03</m_BlendTime>
     <m_BlendOutTime>0.05</m_BlendOutTime>

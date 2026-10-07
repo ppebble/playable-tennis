@@ -15,7 +15,12 @@ local function notice(message)
 end
 local function player() return getSpecificPlayer(0) end
 local function swingAnimation()
-    local _,reason=PTSwing.play(player(),now())
+    local ok,_,reason=pcall(PTSwing.play,player(),now())
+    if not ok then
+        print("[PlayableTennis] cosmetic swing failed: "..tostring(_))
+        notice("Swing animation failed; tennis input is still sent. See the game log.")
+        return
+    end
     if reason=="busy" then notice("Swing animation unavailable while another action is in progress.") end
 end
 local function holdsSports(p)
@@ -28,12 +33,15 @@ local function equippedToStart(p)
     return p:getPrimaryHandItem():getCondition()>0 and ball and ball:getFullType()=="Base.TennisBall"
 end
 local function mouseEligible(p)
-    if not p or not C.session or not C.core or C.waiting or C.core.phase=="finished" then return false end
-    if p:isDead() or p:getVehicle() then return false end
+    if not p or not C.session or not C.core then return false end
+    if C.waiting then return false,"Waiting for a second player. For solo testing, leave and choose Solo test." end
+    if C.core.phase=="finished" then return false,"Match finished. Leave and join again to play." end
+    if p:isDead() or p:getVehicle() then return false,"Stay alive and on foot to play tennis." end
     local c=C.core.court
-    if p:getZ()~=c.z or not PTWall.contains(c,p:getX(),p:getY(),2) then return false end
+    if p:getZ()~=c.z or not PTWall.contains(c,p:getX(),p:getY(),2) then return false,"Return to the court and its floor to play tennis." end
     local item=p:getPrimaryHandItem()
-    return holdsSports(p) and item:getCondition()>0
+    if not holdsSports(p) or item:getCondition()<=0 then return false,"Equip an intact SPORTS Tennis Racket in your primary hand." end
+    return true
 end
 local function releaseGuard(force)
     local guard=C.attackGuard
@@ -160,7 +168,8 @@ local function mouseAim()
         if c.mode=="wall" then scale=width*0.18
         else
             local even=(C.core.points[1]+C.core.points[2])%2==0
-            local left=(C.core.server==1 and even) or (C.core.server==2 and not even)
+            local server=C.core.testTarget and C.slot or C.core.server
+            local left=(server==1 and even) or (server==2 and not even)
             base=base+(left and 1 or -1)*width*0.25
             scale=width*0.1
         end
@@ -168,7 +177,12 @@ local function mouseAim()
     return math.max(-1,math.min(1,(x-base)/scale))
 end
 local function input(command,selectedAim)
-    if not mouseEligible(player()) or inputBlocked() then return end
+    if inputBlocked() then return end
+    local eligible,reason=mouseEligible(player())
+    if not eligible then
+        if reason then notice(reason); if command=="serve" then print("[PlayableTennis] serve blocked locally: "..reason) end end
+        return
+    end
     if command=="serve" and not equippedToStart(player()) then notice("Hold the Tennis Ball in your secondary hand to serve."); return end
     if now() - (C.receivedAt or 0) > 3000 then
         notice("Waiting for server state; syncing...")
@@ -178,6 +192,7 @@ local function input(command,selectedAim)
     C.seq = C.seq + 1
     C.flashUntil = now() + 180
     swingAnimation()
+    if command=="serve" then print("[PlayableTennis] serve sent: session="..tostring(C.session).." seq="..C.seq) end
     send(command, { aim = selectedAim or aim(), seq = C.seq, session = C.session })
 end
 local function mouseDown()
@@ -192,10 +207,9 @@ local function mouseDown()
         end
         return
     end
-    if not mouseEligible(p) then return end
     -- Aim stance is only needed to start/restart a point. During the rally,
     -- cursor targeting is independent of vanilla aiming and running speed.
-    if C.core.phase=="ready" and not isMouseButtonDown(1) then return end
+    if C.core.phase=="ready" and not isMouseButtonDown(1) then notice("Hold RMB while clicking LMB to serve, or press K."); return end
     updateGuard(p)
     input(C.core.phase=="ready" and "serve" or "swing",mouseAim())
 end
@@ -418,7 +432,8 @@ function Overlay:render()
         line(core.phase=="rally" and "Cursor: aim | LMB: swing | Release RMB to run"
             or "Hold RMB + LMB: serve / restart | J/K: backup",3)
         local even = (core.points[1] + core.points[2]) % 2 == 0
-        local left = (core.server == 1 and even) or (core.server == 2 and not even)
+        local servingSlot = core.testTarget and C.slot or core.server
+        local left = (servingSlot == 1 and even) or (servingSlot == 2 and not even)
         local side = left and "west (lower X)" or "east (higher X)"
         line(court.mode == "wall" and ("Depth " .. tostring(y2-y1) .. " tiles | Hold ball + RMB/LMB to restart.")
             or "Serve near baseline, " .. side .. " half.",4)

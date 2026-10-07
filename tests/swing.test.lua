@@ -4,6 +4,7 @@ local p={kind="PlayableTennis.SportsTennisRacket"}
 function p:getPrimaryHandItem() return {getFullType=function() return self.kind end} end
 function p:isDead() return self.dead end
 function p:getVehicle() return self.vehicle end
+function p:getVariableString(name) return name=="PerformingAction" and "PT_TennisSwing" or "holdingbagright" end
 check(PTSwing.play(p,1000),"first cosmetic swing")
 local action=SwingMock.queue.queue[1]
 action.action={setUseProgressBar=function(self,value) self.progress=value end,
