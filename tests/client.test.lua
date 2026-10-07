@@ -309,9 +309,9 @@ PTClient.overlay.drawText=function(self,text) labels[#labels+1]=text end
 PTClient.overlay:render()
 local pointScore,overall,pausedMessage=false,false,false
 for _,text in ipairs(labels) do
-    if string.find(text,'30 : 40',1,true) then pointScore=true end
+    if string.find(text,'30  |  40',1,true) then pointScore=true end
     if string.find(text,'Games ',1,true) then overall=true end
-    if string.find(text,paused.core.message,1,true) then pausedMessage=true end
+    if string.find(text,'Paused -',1,true) then pausedMessage=true end
 end
 check(pointScore and not overall,'HUD shows point score without requiring overall games tally')
 check(pausedMessage,'pause explanation is not overwritten by receiver readiness')
@@ -320,7 +320,7 @@ paused.revision=2; paused.core.paused=false; paused.core.phase='finished'; pause
 PTClient.receive('state',paused)
 labels={}; PTClient.overlay:render()
 local winner=false
-for _,text in ipairs(labels) do if string.find(text,'Slot 2 wins',1,true) then winner=true end end
+for _,text in ipairs(labels) do if string.find(text,'Opponent wins',1,true) then winner=true end end
 check(winner,'finished game clearly labels the winner without an overall score')
 
 PTClient.receive('list',{courts={{id='again',x1=0,y1=0,x2=8,y2=18,z=0,mode='tennis'}}})
@@ -385,12 +385,12 @@ ClientMock.buttons={[0]=true,[1]=true}; click()
 check(last().command=='serve' and math.abs(last().args.aim-0.5)<0.000001,'east-west mouse aims across local court width')
 labels={}; PTClient.overlay.drawText=function(self,text) labels[#labels+1]=text end
 PTClient.overlay:render()
-local west,half=false,false
+local serveZone,debug=false,false
 for _,text in ipairs(labels) do
-    if string.find(text,'You: west',1,true) then west=true end
-    if string.find(text,'Green serve box: WEST, north (lower Y)',1,true) then half=true end
+    if text=='Serve Zone' then serveZone=true end
+    if string.find(text,'lower Y',1,true) or string.find(text,'You: west',1,true) then debug=true end
 end
-check(west and half,'east-west HUD names the real world baseline and service half')
+check(serveZone and not debug,'rotated court uses friendly zone labels without axis diagnostics')
 rotated.revision=2; rotated.core.phase='rally'; rotated.core.ball={x=202.5,y=109,z=1}
 PTClient.receive('state',rotated)
 ClientMock.draws={}; PTClient.overlay:render()
@@ -398,3 +398,26 @@ local worldBall
 for _,d in ipairs(ClientMock.draws) do if d.w==6 and d.h==6 then worldBall=d end end
 check(worldBall and math.abs(worldBall.x-(109*10-202.5*10-3))<0.000001
     and math.abs(worldBall.y-(109*5+202.5*5-13))<0.000001,'east-west tennis ball renders in world axes')
+
+-- Compact top-center HUD, responsive score, notices and idle visibility.
+PTClient.courts={}; PTClient.messageUntil=0
+ClientMock.texts={}; ClientMock.draws={}; PTClient.overlay:render()
+local large
+for _,t in ipairs(ClientMock.texts) do if t.font==UIFont.Large then large=t end end
+check(large and large.zoom>2 and large.y<100,'score is enlarged at top of screen')
+local tw=getTextManager():MeasureStringX(large.font,large.text)*large.zoom
+check(math.abs(large.x+tw/2-640)<0.01,'score centered on viewport')
+ClientMock.screenWidth=800; ClientMock.texts={}; PTClient.overlay:render()
+for _,t in ipairs(ClientMock.texts) do
+    if t.font==UIFont.Large then check(math.abs(t.x+getTextManager():MeasureStringX(t.font,t.text)*t.zoom/2-400)<0.01,'HUD recenters on resolution change') end
+end
+ClientMock.screenWidth=nil
+PTClient.core.court.mode='wall'; PTClient.core.rally=5; PTClient.core.bestRally=9
+ClientMock.texts={}; PTClient.overlay:render()
+check(#ClientMock.texts==1 and ClientMock.texts[1].text=='Rally 5 | Best 9 | Depth 18','wall HUD contains only three requested metrics')
+PTClient.receive('error',{message='Swing cooldown.'})
+ClientMock.texts={}; PTClient.overlay:render()
+check(ClientMock.texts[2].text=='Wait a moment before swinging again.','yellow input notice replaces diagnostic wording')
+PTClient.receive('left',{session=PTClient.session}); PTClient.messageUntil=0
+ClientMock.texts={}; ClientMock.draws={}; PTClient.overlay:render()
+check(#ClientMock.texts==0 and #ClientMock.draws==0,'holding racket outside play has no persistent HUD')

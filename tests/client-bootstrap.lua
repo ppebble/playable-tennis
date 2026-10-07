@@ -31,8 +31,9 @@ function getMouseY() return ClientMock.mouseY or 12 end
 function screenToIsoX(_,x,y,z) return x end
 function screenToIsoY(_,x,y,z) return y end
 function getCore() return {isDoingTextEntry=function() return ClientMock.focused end,
-    getScreenWidth=function() return 1280 end,getScreenHeight=function() return 720 end} end
-UIFont={Small=1}
+    getScreenWidth=function() return ClientMock.screenWidth or 1280 end,getScreenHeight=function() return 720 end} end
+UIFont={Small=1,Large=2}
+function getTextManager() return {MeasureStringX=function(_,font,text) return #text*(font==2 and 14 or 7) end,getFontHeight=function(_,font) return font==2 and 28 or 16 end} end
 function isoToScreenX(_,x,y,z) return x*10-y*10 end
 function isoToScreenY(_,x,y,z) return x*5+y*5-z*30 end
 Events={}
@@ -53,6 +54,11 @@ function ISPanel:setWidth(v) self.width=v end
 function ISPanel:setHeight(v) self.height=v end
 function ISPanel:drawLine2(x,y,x2,y2) ClientMock.lines=ClientMock.lines or {}; ClientMock.lines[#ClientMock.lines+1]={x=x,y=y,x2=x2,y2=y2} end
 function ISPanel:drawText() end
+function ISPanel:drawTextZoomed(text,x,y,zoom,r,g,b,a,font)
+    ClientMock.texts=ClientMock.texts or {}
+    table.insert(ClientMock.texts,{text=text,x=x,y=y,zoom=zoom,font=font})
+    self:drawText(text,x,y,r,g,b,a,font)
+end
 function ISPanel:drawRect(x,y,w,h) ClientMock.draws[#ClientMock.draws+1]={x=x,y=y,w=w,h=h} end
 function ClientMock.menu()
     return {options={},addOption=function(self,name,target,callback,arg)

@@ -306,10 +306,9 @@ local function contextMenu(playerIndex, context, objects, test)
 end
 local Overlay = ISPanel:derive("PT_Overlay")
 local function score(core)
-    if core.phase=="finished" and core.winner then return "Slot "..tostring(core.winner).." wins" end
     local a,b = core.points[1],core.points[2]
     if a >= 3 and b >= 3 then
-        if a == b then return "Deuce" end
+        if a == b then return "40 : 40" end
         return a > b and "AD : 40" or "40 : AD"
     end
     local labels = {"0","15","30","40"}
@@ -474,7 +473,7 @@ function Overlay:render()
                     self:worldLine(a.x2,a.y2,a.x1,a.y2,z,0.2,1,0.4)
                     self:worldLine(a.x1,a.y2,a.x1,a.y1,z,0.2,1,0.4)
                     local sx,sy=project((a.x1+a.x2)/2,a.baseline,z)
-                    self:drawText("SERVE HERE",sx-35,sy-25,0.2,1,0.4,1,UIFont.Small)
+                    self:drawText("Serve Zone",sx-35,sy-25,0.2,1,0.4,1,UIFont.Small)
                 end
                 if core.phase=="ready" then
                     local a=PTCore.receiveArea(core,core.testTarget and 2 or core.server)
@@ -483,7 +482,7 @@ function Overlay:render()
                     self:worldLine(a.x2,a.y2,a.x1,a.y2,z,0.3,0.7,1)
                     self:worldLine(a.x1,a.y2,a.x1,a.y1,z,0.3,0.7,1)
                     local rx,ry=project(a.x,a.y,z)
-                    self:drawText(core.testTarget and "FEED: RECEIVE HERE" or "RECEIVE HERE",rx-40,ry-25,0.3,0.7,1,1,UIFont.Small)
+                    self:drawText("Receive Zone",rx-40,ry-25,0.3,0.7,1,1,UIFont.Small)
                 end
             else
                 -- Mark the actual wall foot, not a fractional storey above it.
@@ -504,50 +503,64 @@ function Overlay:render()
                 drawBall(function(x,y,w,h,a,r,g,b) self:drawRect(x,y,w,h,a,r,g,b) end)
             end
         end
-        local x,y = 24,160
-        self:drawRect(x,y,490,170,0.83,0.04,0.06,0.07)
-        local function line(text,row,r,g,b)
-            self:drawText(text,x+10,y+8+row*21,r or 1,g or 1,b or 1,1,UIFont.Small)
+        local center=getCore():getScreenWidth()/2
+        local top=36
+        local width=math.min(460,getCore():getScreenWidth()-32)
+        local function centered(text,y,font,zoom,r,g,b)
+            local tw=getTextManager():MeasureStringX(font,text)
+            zoom=math.min(zoom,(width-24)/math.max(1,tw))
+            self:drawTextZoomed(text,center-tw*zoom/2,y,zoom,r or 1,g or 1,b or 1,1,font)
         end
-        line("Playable Tennis | " .. (core.testTarget and "SOLO TEST" or court.mode) .. " | Slot " .. tostring(C.slot),0)
-        line(score(core) .. "    " .. core.phase,1)
-        if court.mode == "wall" then
-            line("Rally " .. tostring(core.rally) .. " | Best " .. tostring(core.bestRally)
-                .. " | Wall " .. tostring((court.wallMaxX or x2)-(court.wallMinX or x1))
-                .. " tiles | Z " .. tostring(z),2)
+        if court.mode=="wall" then
+            self:drawRect(center-width/2,top,width,36,0.75,0.04,0.06,0.07)
+            centered("Rally "..tostring(core.rally or 0).." | Best "..tostring(core.bestRally or 0)
+                .." | Depth "..tostring(y2-y1),top+8,UIFont.Small,1)
         else
-            local side=core.court.frame and (C.slot==1 and "west" or "east") or (C.slot==1 and "north" or "south")
-            line("Server: slot " .. tostring(core.server) .. " | You: " .. side,2)
+            local names=C.names or {}
+            local function name(slot)
+                return names[slot] or (core.testTarget and slot==2 and "Practice Target" or "Opponent")
+            end
+            local serving=core.testTarget and C.slot or core.server
+            local status
+            if core.phase=="finished" then status=name(core.winner or serving).." wins"
+            elseif C.waiting then status="Waiting for opponent"
+            elseif core.paused then status="Paused - return to court with your racket"
+            elseif core.phase=="ready" then
+                status=core.receiverReady==false and "Waiting for receiver in Receive Zone"
+                    or (serving==C.slot and "Your serve" or name(serving).." to serve")
+            elseif core.points[1]>=3 and core.points[1]==core.points[2] then status="Deuce"
+            else status="Rally" end
+            local scoreZoom=2.4
+            local scoreHeight=getTextManager():getFontHeight(UIFont.Large)*scoreZoom
+            self:drawRect(center-width/2,top,width,64+scoreHeight,0.75,0.04,0.06,0.07)
+            centered(status,top+8,UIFont.Small,1,0.7,0.9,1)
+            centered(name(1).."  |  "..name(2),top+29,UIFont.Small,1)
+            centered(score(core):gsub(" : ","  |  "),top+52,UIFont.Large,scoreZoom)
         end
-        line(core.phase=="rally" and "Cursor: aim | LMB: swing | Release RMB to run"
-            or "Hold RMB + LMB: serve / restart | J/K: backup",3)
-        local even = (core.points[1] + core.points[2]) % 2 == 0
-        local servingSlot = core.testTarget and C.slot or core.server
-        local left = (servingSlot == 1 and even) or (servingSlot == 2 and not even)
-        local side = court.frame and (left and "north (lower Y)" or "south (higher Y)") or (left and "west (lower X)" or "east (higher X)")
-        local baseline = court.frame and (servingSlot==1 and "WEST" or "EAST") or (servingSlot==1 and "NORTH" or "SOUTH")
-        line(court.mode == "wall" and ("Depth " .. tostring(y2-y1) .. " tiles | Hold ball + RMB/LMB to restart.")
-            or "Green serve box: " .. baseline .. ", " .. side .. ".",4)
-        local readyMessage
-        if not core.paused and court.mode=="tennis" and core.phase=="ready" and core.receiverReady~=nil then
-            readyMessage=core.receiverReady and "Receiver ready - serve when ready."
-                or "Waiting for receiver in blue area with racket."
-        end
-        line(tostring(C.waiting and "Waiting for opponent - tennis input disabled" or readyMessage or core.message or ""),5,0.7,0.9,1)
-        line(core.testTarget and "Right-click menu: opponent feed (ready) / leave"
-            or "Right-click > Playable Tennis: courts / leave / sync",6)
-        if now() < (C.flashUntil or 0) then
-            self:drawRect(x+470,y+10,10,10,1,1,0.8,0.2)
-        end
-    end
-    if not core and holdsSports(player()) then
-        self:drawRect(24,160,550,54,0.83,0.04,0.06,0.07)
-        self:drawText("Sports racket: combat disabled. Aim at a wall + RMB/LMB to start.",34,168,1,1,1,1,UIFont.Small)
-        self:drawText("Start requires Tennis Ball in secondary hand. Join a court for 1v1.",34,189,0.7,0.9,1,1,UIFont.Small)
     end
     if now() < (C.messageUntil or 0) then
-        self:drawRect(24,335,640,30,0.85,0.05,0.05,0.05)
-        self:drawText(C.message,34,341,1,0.85,0.4,1,UIFont.Small)
+        local message=C.message
+        local friendly={
+            ["Swing cooldown."]="Wait a moment before swinging again.",
+            ["Ball is outside racket height (0.15 to 2.4)."]="The ball is too high or too low to hit.",
+            ["Waiting for a second player. For solo testing, leave and choose Solo test."]="Waiting for opponent.",
+            ["Hold RMB while clicking LMB to serve, or press K."]="Hold right-click, then left-click to serve.",
+            ["Waiting for the receiver: stand in the blue return area with a sports racket."]="The receiver must enter Receive Zone with a racket.",
+            ["Move into the blue return area with a sports racket before requesting a feed."]="Enter Receive Zone with your racket first.",
+            ["Equip an intact SPORTS Tennis Racket in your primary hand."]="Hold a usable sports racket in your right hand.",
+            ["Hold the Tennis Ball in your secondary hand to serve."]="Hold a tennis ball in your left hand to serve.",
+            ["Hold a Tennis Ball in your secondary hand to serve."]="Hold a tennis ball in your left hand to serve.",
+            ["Waiting for server state; syncing..."]="Reconnecting to the game...",
+        }
+        message=friendly[message] or message
+        if message:find("green serve box",1,true) then message="Move into Serve Zone to serve." end
+        local screenWidth=getCore():getScreenWidth()
+        local tw=getTextManager():MeasureStringX(UIFont.Small,message)
+        local zoom=math.min(1,(screenWidth-56)/math.max(1,tw))
+        local y=core and (core.court.mode=="wall" and 80
+            or 112+getTextManager():getFontHeight(UIFont.Large)*2.4) or 36
+        self:drawRect((screenWidth-tw*zoom)/2-12,y,tw*zoom+24,30,0.85,0.05,0.05,0.05)
+        self:drawTextZoomed(message,(screenWidth-tw*zoom)/2,y+6,zoom,1,0.85,0.4,1,UIFont.Small)
     end
 end
 local function tick()
