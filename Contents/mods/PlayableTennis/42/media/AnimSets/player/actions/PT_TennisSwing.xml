@@ -9,12 +9,7 @@
     <m_SpeedScale>1.0</m_SpeedScale>
     <m_Looped>false</m_Looped>
     <m_SyncTrackingEnabled>false</m_SyncTrackingEnabled>
-    <!-- Match the timed action explicitly so native actions/default-fallback (surrender) cannot play. -->
-    <m_Conditions>
-        <m_Name>RightHandMask</m_Name>
-        <m_Type>STRING</m_Type>
-        <m_Value>PT_TennisRacket</m_Value>
-    </m_Conditions>
+    <!-- Only the owned action selects this node. Model refresh can clear RightHandMask. -->
     <m_Conditions>
         <m_Name>PerformingAction</m_Name>
         <m_Type>STRING</m_Type>

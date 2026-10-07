@@ -53,7 +53,11 @@ Events.OnFillWorldObjectContextMenu.callback(0,menu,{{getSquare=function() retur
 menu.submenu.options[1].callback(menu.submenu.options[1].target,menu.submenu.options[1].arg)
 check(ClientMock.selecting,'context begins one rectangle selection workflow')
 ClientMock.selectCourt({x1=1,y1=2,x2=9,y2=20,z=0,mode='tennis'})
-check(ClientMock.sent[#ClientMock.sent-1].command=='create','rectangle confirmation submits one create request')
+check(ClientMock.sent[#ClientMock.sent].command=='create','confirmation does not sync over the registration result')
+PTClient.receive('error',{message='Obstacle blocks court'})
+check(PTClient.message=='Obstacle blocks court','registration failure stays visible')
+PTClient.receive('created',{id='court'})
+check(string.find(PTClient.message,'registered')~=nil,'registration acknowledgment explains joining')
 PTCourtSelector.cancel()
 local join
 for _,o in ipairs(menu.submenu.options) do if o.name=='Join court (tennis)' then join=o end end
@@ -207,6 +211,7 @@ check(soloOption~=nil,'solo test available for saved court')
 soloOption.callback(soloOption.target)
 check(last().command=='startSolo' and last().args.id=='solo-court','solo option sends explicit test mode')
 local targetState=snapshot(1,'ready',nil,'solo-ui')
+targetState.core.court.id='solo-court'
 targetState.core.testTarget={x=2.4,y=16,radius=1.8}
 PTClient.receive('state',targetState)
 soloMenu=ClientMock.menu()
@@ -225,4 +230,19 @@ PTCourtSelector.cancel()
 ClientMock.selectionCooldown=true; before=#ClientMock.sent; click()
 check(#ClientMock.sent==before,'selection completion click cannot trigger a sports stroke')
 ClientMock.selectionCooldown=false
+PTClient.receive('left',{session='solo-ui'})
+ClientMock.lines={}; PTClient.overlay:render()
+check(#ClientMock.lines==4,'registered idle court displays just its four boundary edges')
+local wallView=snapshot(1,'ready',nil,'wall-boundary')
+wallView.core.court={id='wall-test',mode='wall',freeWall=true,x1=0,x2=8,y1=0,y2=14,z=0,
+    wallMinX=0,wallMaxX=8,frame={originX=100,originY=200,ux=0,uy=1,vx=1,vy=0}}
+ClientMock.buttons={}
+PTClient.receive('state',wallView)
+ClientMock.lines={}; PTClient.overlay:render()
+check(#ClientMock.lines==7,'wall displays three wall marks and saved court edges without trapezoid')
+check(ClientMock.lines[1].x==0 and ClientMock.lines[1].y==0,'saved court uses world coordinates during rotated wall practice')
+PTCourtSelector.cursor={preview={court={x1=1,y1=2,x2=9,y2=20,z=0},red=0.2,green=0.9}}
+ClientMock.lines={}; PTClient.overlay:render()
+check(#ClientMock.lines==11,'selection adds four outline edges without a filled area')
+PTCourtSelector.cursor=nil
 print('PASS client checks: '..checks)

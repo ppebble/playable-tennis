@@ -11,6 +11,8 @@ New-Item -ItemType Directory -Path $build -Force | Out-Null
 if ($LASTEXITCODE -ne 0) { throw 'Harness compilation failed' }
 & $Javac -d $build (Join-Path $repo 'tests/OverlayHitTest.java')
 if ($LASTEXITCODE -ne 0) { throw 'Native UI test compilation failed' }
+& $Javac -d $build (Join-Path $repo 'tests/SwingAnimationTest.java')
+if ($LASTEXITCODE -ne 0) { throw 'Native swing test compilation failed' }
 $java = Join-Path $GamePath 'jre64/bin/java.exe'
 $cp = "$build;$(Join-Path $GamePath 'projectzomboid.jar')"
 $core = Join-Path $mod 'media/lua/shared/PT_Core.lua'
@@ -19,6 +21,8 @@ Push-Location $GamePath
 try {
 & $java -cp $cp OverlayHitTest
 if ($LASTEXITCODE -ne 0) { throw 'Native UI hit testing failed' }
+& $java -cp $cp SwingAnimationTest (Join-Path $mod 'media/AnimSets/player/actions/PT_TennisSwing.xml') (Join-Path $mod 'media/AnimSets/player/maskingright/PT_TennisSwing.xml')
+if ($LASTEXITCODE -ne 0) { throw 'Native swing animation selection failed' }
 & $java -cp $cp LuaHarness $wall $core (Join-Path $repo 'tests/core.test.lua')
 if ($LASTEXITCODE -ne 0) { throw 'Core tests failed' }
 & $java -cp $cp LuaHarness $wall (Join-Path $repo 'tests/wall.test.lua')
@@ -67,7 +71,7 @@ foreach ($node in @($swing.animNode, $actionSwing.animNode)) {
     if ($node.m_AnimName -ne 'Bob_Attack1Hand01_Hit' -or $node.m_Events) { throw 'Swing must use event-free native one-handed attack' }
     $nodeConditions = @{}
     foreach ($condition in $node.m_Conditions) { $nodeConditions[$condition.m_Name] = $condition.m_Value }
-    if ($nodeConditions.PerformingAction -ne 'PT_TennisSwing' -or $nodeConditions.RightHandMask -ne 'PT_TennisRacket') { throw 'Both swing layers must match the sports action explicitly' }
+    if ($nodeConditions.PerformingAction -ne 'PT_TennisSwing' -or $nodeConditions.Count -ne 1) { throw 'Both swing layers must match only the owned action, independent of model mask refresh' }
     $nodeWeights = @{}
     foreach ($bone in $node.m_SubStateBoneWeights) { $nodeWeights[$bone.boneName] = [double]$bone.weight }
     if ($nodeWeights.Bip01 -ne 0 -or $nodeWeights.Bip01_R_Clavicle -ne 1 -or $nodeWeights.Bip01_Prop1 -ne 1 -or $nodeWeights.Count -ne 3) { throw 'Swing must mask all bones except right arm and racket prop' }
@@ -75,7 +79,7 @@ foreach ($node in @($swing.animNode, $actionSwing.animNode)) {
 }
 $conditions = @{}
 foreach ($condition in $swing.animNode.m_Conditions) { $conditions[$condition.m_Name] = $condition.m_Value }
-if ($conditions.RightHandMask -ne 'PT_TennisRacket' -or $conditions.PerformingAction -ne 'PT_TennisSwing') { throw 'Swing must be isolated to sports racket and active action' }
+if ($conditions.PerformingAction -ne 'PT_TennisSwing') { throw 'Swing must be isolated to the owned sports action' }
 foreach ($state in @('idle','movement','aim','run','sprint')) {
     [xml]$tags = Get-Content (Join-Path $GamePath "media/actiongroups/player/$state/childTags.xml") -Raw
     if (@($tags.childTags.tag) -notcontains 'maskingright') { throw "Native state cannot display racket swing: $state" }

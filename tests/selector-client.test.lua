@@ -9,8 +9,11 @@ local result
 PTCourtSelector.begin(ClientMock.player,function(r) result=r end)
 Events.OnTick.fire()
 check(PTCourtSelector.blocksInput(),"real selector blocks gameplay")
-getCell():getDrag():tryBuild(10,20,0)
-getCell():getDrag():tryBuild(15,31,0)
+local sent=#ClientMock.sent
+ClientMock.buttons={[0]=true,[1]=true}
+Events.OnMouseDown.fire(10,20)
+Events.OnMouseDown.fire(15,31)
+check(#ClientMock.sent==sent,"selector clicks cannot start wall practice through client handler")
 check(result and result.x2==16 and result.y2==32,"real selection submits rectangle")
 ClientMock.time=ClientMock.time+251
 Events.OnTick.fire()

@@ -16,6 +16,28 @@ local function blocked(sq,edge)
     return not sq or flag(sq,"collide"..edge) or flag(sq,"Wall"..edge)
         or flag(sq,"Window"..edge) or flag(sq,"DoorWall"..edge) or flag(sq,"Hoppable"..edge)
 end
+function W.validateCourt(c, squareAt)
+    if c.freeWall then return PTWall.valid(c,squareAt) end
+    for x=c.x1,c.x2-1 do
+        for y=c.y1,c.y2-1 do
+            local sq=squareAt(x,y,c.z)
+            if not sq or not sq:getFloor() then return false,"Court must be fully loaded and have a floor." end
+            if sq:isSolid() or sq:isSolidTrans() or flag(sq,"water") then return false,"Clear solid obstacles/water from the court." end
+            if x>c.x1 and (flag(sq,"collideW") or flag(sq,"WallW") or flag(sq,"WindowW") or flag(sq,"DoorWallW")) then
+                return false,"An interior west wall/fence blocks this court."
+            end
+            if y>c.y1 and (flag(sq,"collideN") or flag(sq,"WallN") or flag(sq,"WindowN") or flag(sq,"DoorWallN")) then
+                return false,"An interior north wall/fence blocks this court."
+            end
+            if c.mode=="wall" and y==c.y1 then
+                if not flag(sq,"WallN") or flag(sq,"WindowN") or flag(sq,"DoorWallN") or flag(sq,"HoppableN") then
+                    return false,"Wall practice needs an unbroken solid NORTH wall (no doors/windows/fences)."
+                end
+            end
+        end
+    end
+    return true
+end
 function W.toLocal(c,x,y)
     local f=c.frame
     if not f then return x,y end

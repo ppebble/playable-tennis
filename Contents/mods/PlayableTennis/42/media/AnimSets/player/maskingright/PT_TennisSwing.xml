@@ -11,11 +11,6 @@
     <m_SyncTrackingEnabled>false</m_SyncTrackingEnabled>
     <!-- The native run/sprint states allow maskingright, but not actions. -->
     <m_Conditions>
-        <m_Name>RightHandMask</m_Name>
-        <m_Type>STRING</m_Type>
-        <m_Value>PT_TennisRacket</m_Value>
-    </m_Conditions>
-    <m_Conditions>
         <m_Name>PerformingAction</m_Name>
         <m_Type>STRING</m_Type>
         <m_Value>PT_TennisSwing</m_Value>

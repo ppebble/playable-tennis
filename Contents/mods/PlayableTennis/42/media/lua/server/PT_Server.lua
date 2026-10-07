@@ -32,7 +32,7 @@ local function near(p, c, margin)
     return not p:isDead() and p:getZ() == c.z and p:getX() >= c.x1-margin and p:getX() <= c.x2+margin
         and p:getY() >= c.y1-margin and p:getY() <= c.y2+margin
 end
-local function flag(sq, name) return sq:has(IsoFlagType[name]) end
+
 local function squareAt(x,y,z) return getCell():getGridSquare(x,y,z) end
 local function sportsRacket(p)
     local item=p:getPrimaryHandItem()
@@ -43,26 +43,7 @@ local function ballInHand(p)
     return item and item:getFullType()=="Base.TennisBall"
 end
 local function clearCourt(c)
-    if c.freeWall then return PTWall.valid(c,squareAt) end
-    for x=c.x1,c.x2-1 do
-        for y=c.y1,c.y2-1 do
-            local sq=getCell():getGridSquare(x,y,c.z)
-            if not sq or not sq:getFloor() then return false,"Court must be fully loaded and have a floor." end
-            if sq:isSolid() or sq:isSolidTrans() or flag(sq,"water") then return false,"Clear solid obstacles/water from the court." end
-            if x>c.x1 and (flag(sq,"collideW") or flag(sq,"WallW") or flag(sq,"WindowW") or flag(sq,"DoorWallW")) then
-                return false,"An interior west wall/fence blocks this court."
-            end
-            if y>c.y1 and (flag(sq,"collideN") or flag(sq,"WallN") or flag(sq,"WindowN") or flag(sq,"DoorWallN")) then
-                return false,"An interior north wall/fence blocks this court."
-            end
-            if c.mode=="wall" and y==c.y1 then
-                if not flag(sq,"WallN") or flag(sq,"WindowN") or flag(sq,"DoorWallN") or flag(sq,"HoppableN") then
-                    return false,"Wall practice needs an unbroken solid NORTH wall (no doors/windows/fences)."
-                end
-            end
-        end
-    end
-    return true
+    return PTWall.validateCourt(c,squareAt)
 end
 S.validateCourt = clearCourt
 local function wallPath(c,x1,y1,x2,y2)
@@ -177,6 +158,7 @@ function S.dispatch(p,command,args)
         db.courts={}
         db.nextId=db.nextId+1; c.id=tostring(db.nextId); c.owner=who; c.bestRally=0
         db.courts[c.id]=c
+        emit(p,"created",{id=c.id})
         if isServer() then
             local players=getOnlinePlayers()
             for i=0,players:size()-1 do list(players:get(i)) end

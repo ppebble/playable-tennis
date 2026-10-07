@@ -11,8 +11,9 @@ check(S.isActive(),"active")
 check(S.blocksInput(),"selection blocks gameplay")
 cursor:create(10,20,0)
 cursor:render(15,31,0)
-local h=M.highlights[#M.highlights]
-check(h[2]==10 and h[3]==20 and h[4]==16 and h[5]==32,"inclusive native highlight")
+local h=cursor.preview.court
+check(h.x1==10 and h.y1==20 and h.x2==16 and h.y2==32,"inclusive outline preview")
+check(#M.highlights==0,"selection never fills the court")
 check(cursor:isValid(square(15,31,0)),"minimum allowed rectangle")
 check(not cursor:isValid(square(14,31,0)),"width too small")
 check(not cursor:isValid(square(24,31,0)),"width too large")
@@ -62,23 +63,34 @@ M.events.OnDisconnect()
 check(not S.isActive(),"disconnect cancels")
 check(not S.begin(nil,function()end),"invalid player rejected")
 -- Exercise the engine event, not just direct helper calls, on a remote client.
-function M.player:isBuildButtonReleased() return M.released end
 S.begin(M.player,function(r) result=r end)
 local active=S.cursor
 result=nil
-M.released=false
 M.events.OnDoTileBuilding2(active,true,10,20,0,square(10,20,0))
 check(not active.startX,"render does not select without a release")
-M.released=true
-M.events.OnDoTileBuilding2(active,false,10,20,0,square(10,20,0))
+M.events.OnMouseDown(10,20)
 check(active.startX==10,"native mouse event selects first corner")
 M.events.OnDoTileBuilding2(active,false,15,31,1,square(15,31,1))
 check(not result,"native event cannot select another floor")
-M.events.OnDoTileBuilding2(active,false,15,31,0,square(15,31,0))
+M.events.OnMouseDown(15,31)
 check(result and not S.isActive(),"native mouse event submits remote-client court")
 S.begin(M.player,function()error("duplicate dispatcher")end)
 DoTileBuilding=function()end
 M.events.OnDoTileBuilding2(S.cursor,false,10,20,0,square(10,20,0))
 check(not S.cursor.startX,"fallback defers to existing vanilla dispatcher")
 DoTileBuilding=nil
+S.cancel()
+local allowed=false
+S.begin(M.player,function()error("invalid registration")end,function()return allowed,"Blocked floor" end)
+S.cursor:create(10,20,0)
+S.cursor:render(15,31,0)
+check(S.cursor.preview.red==1,"blocked floor preview is red despite valid size")
+S.cursor:create(15,31,0)
+check(S.isActive(),"invalid confirmation keeps selection open")
+allowed=true; M.time=M.time+201
+S.cursor:render(15,31,0)
+check(S.cursor.preview.green==0.9,"clear floor refreshes to green")
+allowed=false
+S.cursor:create(15,31,0)
+check(S.isActive(),"confirmation revalidates even a cached green preview")
 S.cancel()

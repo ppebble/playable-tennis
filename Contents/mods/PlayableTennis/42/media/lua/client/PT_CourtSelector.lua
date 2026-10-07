@@ -55,8 +55,19 @@ end
 function Cursor:isValid(square)
     if not square or square:getZ() ~= self.z or self.character:isDead() then return false end
     if not self.startX then return true end
-    local _, valid = S.rectangle(self.startX,self.startY,square:getX(),square:getY(),self.z)
-    return valid
+    return self:validate(square:getX(),square:getY(),false)
+end
+
+function Cursor:validate(x,y,fresh)
+    local r,valid=S.rectangle(self.startX or x,self.startY or y,x,y,self.z)
+    if not valid then return false,"Court size: 6-14 x 12-30" end
+    if not self.validator then return true end
+    local t=getTimestampMs()
+    if fresh or self.checkedX~=x or self.checkedY~=y or t>=(self.checkedUntil or 0) then
+        self.checkedX,self.checkedY,self.checkedUntil=x,y,t+200
+        self.checkedValid,self.checkedReason=self.validator(r)
+    end
+    return self.checkedValid,self.checkedReason
 end
 
 -- No building action, walking, item consumption, or native world mutation.
@@ -70,7 +81,8 @@ function Cursor:create(x,y,z)
         self.startX,self.startY = x,y
         return
     end
-    local r, valid = S.rectangle(self.startX,self.startY,x,y,z)
+    local r = S.rectangle(self.startX,self.startY,x,y,z)
+    local valid = self:validate(x,y,true)
     if not valid then return end
     local callback = self.callback
     S.cancel()
@@ -79,17 +91,18 @@ end
 
 function Cursor:render(x,y,z,square)
     if z ~= self.z then return end
-    local r, valid = S.rectangle(self.startX or x,self.startY or y,x,y,z)
+    local r = S.rectangle(self.startX or x,self.startY or y,x,y,z)
+    local valid,reason = self:validate(x,y,false)
     local red,green = 0.2,0.9
     if self.startX and not valid then red,green=1,0.2 end
-    addAreaHighlightForPlayer(self.player,r.x1,r.y1,r.x2,r.y2,z,red,green,0.3,0.45)
+    self.preview={court=r,red=red,green=green}
     if getTextManager and getMouseX then
-        local label = tostring(r.x2-r.x1).." x "..tostring(r.y2-r.y1).."  (6-14 x 12-30)"
+        local label = tostring(r.x2-r.x1).." x "..tostring(r.y2-r.y1).."  "..(reason or "Click to submit court")
         getTextManager():DrawString(UIFont.Small,getMouseX()+18,getMouseY()+18,label,red,green,0.3,1)
     end
 end
 
-function S.begin(character, callback)
+function S.begin(character, callback, validator)
     if not character or character:isDead() or type(callback)~="function" then return false end
     S.cancel()
     local cursor = setmetatable({}, {__index=Cursor})
@@ -100,6 +113,7 @@ function S.begin(character, callback)
     cursor.character,cursor.player = character,character:getPlayerNum()
     cursor.z = math.floor(character:getZ())
     cursor.callback = callback
+    cursor.validator = validator
     cursor.noNeedHammer,cursor.skipBuildAction = true,true
     cursor.rightWasDown = isMouseButtonDown(1)
     S.cursor = cursor
@@ -122,11 +136,20 @@ local function tileBuilding(cursor, isRender, x,y,z,square)
     if type(DoTileBuilding)=="function" then return end
     if z~=cursor.z or not square then return end
     if isRender then cursor:render(x,y,z,square) end
-    if cursor.character:isBuildButtonReleased() and cursor:isValid(square) then
-        cursor:tryBuild(x,y,z)
-    end
 end
 
+local function mouseDown(x,y)
+    local cursor=S.cursor
+    if not cursor or type(DoTileBuilding)=="function" then return end
+    if cursor.character:isDead() or math.floor(cursor.character:getZ())~=cursor.z then return end
+    -- Current B42 IsoPlayer has no isBuildButtonReleased. OnMouseDown is
+    -- emitted only for world clicks not consumed by UIManager.
+    local tx=math.floor(screenToIsoX(cursor.player,x,y,cursor.z))
+    local ty=math.floor(screenToIsoY(cursor.player,x,y,cursor.z))
+    cursor:create(tx,ty,cursor.z)
+end
+
+Events.OnMouseDown.Add(mouseDown)
 Events.OnDoTileBuilding2.Add(tileBuilding)
 Events.OnTick.Add(update)
 Events.OnKeyPressed.Add(function(key)

@@ -101,7 +101,10 @@ function C.receive(command, args)
     if command == "list" then
         C.courts = args.courts or {}
     elseif command == "error" then
+        C.joinPending=false
         notice(args.message)
+    elseif command == "created" then
+        notice("Court "..tostring(args.id).." registered. Right-click > Playable Tennis > Join / Solo test.")
     elseif command == "left" then
         if args.session and C.session and args.session ~= C.session then return end
         if C.session then C.retired[C.session] = true end
@@ -201,7 +204,17 @@ local function keyPressed(key)
     if key == Keyboard.KEY_K then input("serve") end
 end
 local function drawCourt()
-    PTCourtSelector.begin(player(),function(args) send("create",args); sync() end)
+    PTCourtSelector.begin(player(),function(args)
+        notice("Registering court...")
+        send("create",args)
+    end,function(c)
+        local p=player()
+        if not p or p:getZ()~=c.z or p:getX()<c.x1-3 or p:getX()>c.x2+3
+            or p:getY()<c.y1-3 or p:getY()>c.y2+3 then return false,"Stand beside the court to register it." end
+        if SandboxVars and SandboxVars.PlayableTennis and SandboxVars.PlayableTennis.AllowCourtCreation==false
+            and p:getAccessLevel()~="admin" then return false,"Court registration is admin-only." end
+        return PTWall.validateCourt(c,function(x,y,z) return getCell():getGridSquare(x,y,z) end)
+    end)
 end
 local function feed()
     if not C.session or not C.core or not C.core.testTarget or C.core.phase~="ready" or inputBlocked() then return end
@@ -311,21 +324,37 @@ if worldBallRender then
         end)
     end)
 end
-function Overlay:worldLine(x1,y1,x2,y2,z,r,g,b)
-    local ax,ay = project(x1,y1,z)
-    local bx,by = project(x2,y2,z)
+function Overlay:worldLine(x1,y1,x2,y2,z,r,g,b,absolute)
+    local ax,ay,bx,by
+    if absolute then
+        ax,ay=isoToScreenX(0,x1,y1,z),isoToScreenY(0,x1,y1,z)
+        bx,by=isoToScreenX(0,x2,y2,z),isoToScreenY(0,x2,y2,z)
+    else
+        ax,ay=project(x1,y1,z)
+        bx,by=project(x2,y2,z)
+    end
     self:drawLine2(ax,ay,bx,by,0.85,r,g,b)
 end
 function Overlay:render()
     local core = C.core
-    if not core and player() then
+    local preview=PTCourtSelector.cursor and PTCourtSelector.cursor.preview
+    if preview then
+        local c=preview.court
+        self:worldLine(c.x1,c.y1,c.x2,c.y1,c.z,preview.red,preview.green,0.3,true)
+        self:worldLine(c.x2,c.y1,c.x2,c.y2,c.z,preview.red,preview.green,0.3,true)
+        self:worldLine(c.x2,c.y2,c.x1,c.y2,c.z,preview.red,preview.green,0.3,true)
+        self:worldLine(c.x1,c.y2,c.x1,c.y1,c.z,preview.red,preview.green,0.3,true)
+    end
+    if player() then
         for _,court in pairs(C.courts) do
-            if court.x2 and court.y2 and court.z==math.floor(player():getZ()) then
-                self:worldLine(court.x1,court.y1,court.x2,court.y1,court.z,0.6,0.8,1)
-                self:worldLine(court.x2,court.y1,court.x2,court.y2,court.z,0.6,0.8,1)
-                self:worldLine(court.x2,court.y2,court.x1,court.y2,court.z,0.6,0.8,1)
-                self:worldLine(court.x1,court.y2,court.x1,court.y1,court.z,0.6,0.8,1)
-                self:worldLine(court.x1,(court.y1+court.y2)/2,court.x2,(court.y1+court.y2)/2,court.z,0.3,0.8,1)
+            if court.x2 and court.y2 and court.z==math.floor(player():getZ())
+                and (not core or core.court.id~=court.id) then
+                self:worldLine(court.x1,court.y1,court.x2,court.y1,court.z,0.6,0.8,1,true)
+                self:worldLine(court.x2,court.y1,court.x2,court.y2,court.z,0.6,0.8,1,true)
+                self:worldLine(court.x2,court.y2,court.x1,court.y2,court.z,0.6,0.8,1,true)
+                self:worldLine(court.x1,court.y2,court.x1,court.y1,court.z,0.6,0.8,1,true)
+                local lx,ly=isoToScreenX(0,court.x1,court.y1,court.z),isoToScreenY(0,court.x1,court.y1,court.z)
+                self:drawText("Court "..tostring(court.id).." | Right-click: Join / Solo test",lx,ly-20,0.6,0.8,1,1,UIFont.Small)
             end
         end
     end
@@ -359,13 +388,6 @@ function Overlay:render()
                 self:worldLine(left,y1,right,y1,z,0.3,0.8,1)
                 self:worldLine(left,y1,left,y1+0.6,z,0.3,0.8,1)
                 self:worldLine(right,y1,right,y1+0.6,z,0.3,0.8,1)
-                if court.freeWall then
-                    local frontLeft,frontRight=PTWall.localBounds(court,y1)
-                    local backLeft,backRight=PTWall.localBounds(court,y2)
-                    self:worldLine(frontLeft,y1,backLeft,y2,z,0.25,0.55,0.6)
-                    self:worldLine(frontRight,y1,backRight,y2,z,0.25,0.55,0.6)
-                    self:worldLine(backLeft,y2,backRight,y2,z,0.25,0.55,0.6)
-                end
             end
             if mouseEligible(player()) and (core.phase=="rally" or isMouseButtonDown(1)) and not inputBlocked() then
                 local tx,ty=PTCore.aimTarget(core,C.slot,mouseAim(),core.phase=="ready")

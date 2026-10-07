@@ -4,7 +4,7 @@ Version 0.2.2 is retained during user testing. No release/tag or Workshop public
 
 ## Automated evidence
 
-The current suite passes **924 assertions** in the installed game's Kahlua VM, covering physics/scoring, wall selection and geometry, server authority/lifecycle, client controls, per-frame rendering, cosmetic swing and inventory conversion. Eight production Lua modules compile. EN/KO keys, non-weapon item/native-model bindings, both animation nodes and PowerShell syntax pass their contracts.
+The current suite passes **936 assertions** in the installed game's Kahlua VM, covering physics/scoring, wall selection and geometry, server authority/lifecycle, client controls, per-frame rendering, cosmetic swing and inventory conversion. Eight production Lua modules compile. EN/KO keys, non-weapon item/native-model bindings, both animation nodes and PowerShell syntax pass their contracts.
 
 A separate installed-engine UI regression reproduces the former fullscreen-overlay hit-test failure and verifies the zero-area overlay used now. These checks include engine mocks and inspected native behavior; they are not live gameplay or a two-client test.
 
@@ -38,3 +38,12 @@ The 2026-10-07 18:32 client DebugLog records `require("BuildingObjects/ISBuildin
 The selector now owns its small drag callback table without requiring server Lua. It handles the native tile-selection event when the vanilla dispatcher is absent; singleplayer retains the installed dispatcher without duplicate processing. Deactivation is assigned directly because IsoCell uses raw table lookup. No vanilla globals or handlers are overridden.
 
 The old dependency fails the new remote-client fixture before the fix. The corrected tests run the real selector together with PT_Client through startup, 120 ticks, selection, disconnect and restart. A separate test loads the installed ISBaseObject/ISBuildingObject sources and exercises the actual singleplayer dispatcher. These remain Kahlua tests with mocked world/player input, not proof of a live reconnect or visual selection. Version remains 0.2.2; no release or preset change.
+## Court confirmation, outlines and swing conditions
+
+Current suites: core480, wall91, server161, client93, render14, swing15, selector40, client-selector9, legacy native dispatcher4, inventory29. The installed Java IsoPlayer hierarchy does not expose isBuildButtonReleased even though a legacy server Lua file references it. The remote selector now confirms via UIManager's world-only OnMouseDown event; integration tests use that event with the real client handler, without inventing build-button methods. The previous native-dispatch fixture remains only a legacy/singleplayer compatibility check and never proved remote click availability.
+
+Selection and server registration share floor/obstacle validation. Selection checks proximity, refreshes cached validation, and revalidates on confirmation. Server authority remains final. Create no longer immediately sends sync (which could replace a rejection message); the server acknowledges successful registration. Selected and idle registered courts draw outlines, including world-correct registered outlines while wall practice is active. Wall practice omits its trapezoid visualization but retains its reach geometry.
+
+Both swing nodes now select only the owned PerformingAction. The mutable RightHandMask condition previously could reject the nodes when native ModelManager rebuilt equipped models, exposing Bob_EmoteSurrender. A native AnimNode parser/condition test now covers blank, sports and changed hand masks while excluding unrelated actions. Sports equipment is still required by the timed action. This fixes a demonstrated rejection path, not a live visual verification of the reported animation.
+
+Live court confirmation/joining, visible outlines and animation still require a game restart and playtest. Version stays 0.2.2, no release or server preset changes.
