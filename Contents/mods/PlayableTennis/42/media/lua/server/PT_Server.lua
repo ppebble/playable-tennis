@@ -16,9 +16,36 @@ local function database()
     db.courts = db.courts or {}
     db.nextId = db.nextId or 0
     db.wallBest = db.wallBest or {}
+    db.sets = db.sets or {}
     return db
 end
 local function key(p) return p:getUsername() end
+local function connected(p)
+    if not p then return false end
+    if not isServer() then return getSpecificPlayer(0)==p end
+    local players=getOnlinePlayers()
+    for i=0,players:size()-1 do if players:get(i)==p then return true end end
+    return false
+end
+local function save(s)
+    if s.core.court.mode~="tennis" then return end
+    local core=s.core
+    local signature=table.concat({tostring(core.points[1]),tostring(core.points[2]),tostring(core.server),
+        tostring(core.faults),tostring(core.bestRally),tostring(core.winner),tostring(core.testTarget~=nil),
+        tostring(s.names and s.names[1]),tostring(s.names and s.names[2])},":")
+    if signature==s.savedSignature then return end
+    s.savedSignature=signature
+    -- Checkpoint score and identities, never a live trajectory. A restart is a let.
+    local checkpoint=PTCore.snapshot(core)
+    checkpoint.ball=nil; checkpoint.rally=0
+    if checkpoint.phase~="finished" then checkpoint.phase="ready" end
+    database().sets[core.court.id]={core=checkpoint,names=PTCore.snapshot(s.names or {})}
+end
+local function pause(s,reason)
+    s.core.paused=true; s.core.message=reason
+    if s.core.phase=="rally" then s.core.ball=nil; s.core.phase="ready"; s.core.rally=0 end
+    save(s)
+end
 local function emit(p, command, args)
     if isServer() then sendServerCommand(p, "PlayableTennis", command, args)
     elseif PTClient then PTClient.receive(command, args) end
@@ -73,11 +100,12 @@ local function publish(s)
     s.core.receiverReady=receiverReady(s,servingSlot)
     if s.core.testTarget then s.core.feedReceiverReady=receiverReady(s,2) end
     s.revision=s.revision+1
-    local names={}
+    local names=PTCore.snapshot(s.names or {})
     for i=1,2 do if s.players[i] then names[i]=key(s.players[i]) end end
+    save(s)
     for slot=1,2 do
         local p=s.players[slot]
-        if p then emit(p,"state",{session=s.id,slot=slot,revision=s.revision,lastSeq=s.seq[slot] or 0,
+        if connected(p) then emit(p,"state",{session=s.id,slot=slot,revision=s.revision,lastSeq=s.seq[slot] or 0,
             core=PTCore.snapshot(s.core),waiting=s.core.court.mode=="tennis" and not s.core.testTarget and not (s.players[1] and s.players[2]),players=names}) end
     end
 end
@@ -90,9 +118,14 @@ local function close(s,reason)
     end
     for i=1,2 do
         local p=s.players[i]
-        if p then S.members[key(p)]=nil; emit(p,"left",{session=s.id,message=reason}) end
+        if s.names and s.names[i] then S.members[s.names[i]]=nil end
+        if p then
+            S.members[key(p)]=nil
+            if connected(p) then emit(p,"left",{session=s.id,message=reason}) end
+        end
     end
     S.sessions[s.core.court.id]=nil
+    database().sets[s.core.court.id]=nil
 end
 local function list(p)
     local courts={}
@@ -108,30 +141,71 @@ local function newSession(c)
     if count>=16 then return nil end
     S.serial=S.serial+1
     local s={id=tostring(getTimestampMs())..":"..S.serial,core=PTCore.new(c,{
-        gamesToWin=bounded(settings().GamesToWin,2,1,6),ballSpeed=bounded(settings().BallSpeed,9,6,14),
-        hitRadius=bounded(settings().HitRadius,1.8,1,2.5)}),players={},seq={},revision=0}
+        ballSpeed=bounded(settings().BallSpeed,9,6,14),
+        hitRadius=bounded(settings().HitRadius,1.8,1,2.5)}),players={},names={},seq={},revision=0}
     s.core.bestRally=c.bestRally or 0
     S.sessions[c.id]=s
     return s
 end
+local function restore()
+    local db=database()
+    for id,record in pairs(db.sets) do
+        if not db.courts[id] or record.core.phase=="finished" then db.sets[id]=nil
+        elseif not S.sessions[id] then
+            local s=newSession(db.courts[id])
+            if s then
+                s.core=PTCore.snapshot(record.core); s.core.court=PTCore.snapshot(db.courts[id])
+                s.names=PTCore.snapshot(record.names or {})
+                pause(s,"Point score saved. Waiting for participants to return.")
+                for _,who in pairs(s.names) do S.members[who]=s end
+            end
+        end
+    end
+end
+local function availability(s)
+    if settings().Enabled==false then return "Tennis disabled by server; score saved." end
+    for i=1,(s.core.testTarget and 1 or 2) do
+        local p=s.players[i]
+        if not connected(p) or not near(p,s.core.court,2) or p:getVehicle() or not sportsRacket(p) then
+            return "Waiting for both participants on court with intact sports rackets; score saved."
+        end
+    end
+    if not s.lastCourtCheck or now()-s.lastCourtCheck>=1 then
+        s.lastCourtCheck=now()
+        local ok,why=clearCourt(s.core.court)
+        s.courtProblem=not ok and why or nil
+    end
+    return s.courtProblem
+end
+local function refreshPause(s)
+    if s.core.court.mode~="tennis" or s.core.phase=="finished" then return end
+    local reason=availability(s)
+    if reason then pause(s,reason)
+    elseif s.core.paused then s.core.paused=false; s.core.message="Participants ready. Replay the current point." end
+end
 function S.dispatch(p,command,args)
     if not p or type(command)~="string" or (args~=nil and type(args)~="table") then return end
     args=args or {}
+    restore()
     local who=key(p)
     local t=now()
     local rate=S.rates[who]
     if not rate or t-rate.time>=1 then rate={time=t,count=0}; S.rates[who]=rate end
     rate.count=rate.count+1
     if rate.count>16 then return end
-    if settings().Enabled==false then fail(p,"Playable Tennis is disabled by the server."); return end
+    if settings().Enabled==false and command~="sync" and command~="leave" then fail(p,"Playable Tennis is disabled by the server."); return end
     local s=S.members[who]
     if s and p~=s.players[1] and p~=s.players[2] then
-        fail(p,"Player connection changed. Wait for session cleanup, then join again.")
-        return
+        local slot=s.names and (s.names[1]==who and 1 or (s.names[2]==who and 2))
+        local old=slot and s.players[slot]
+        if not slot or (connected(old) and not old:isDead()) or not connected(p) or p:isDead() or (command~="sync" and command~="join" and command~="startSolo") then
+            fail(p,"Player connection changed. Sync to resume your saved game."); return
+        end
+        s.players[slot]=p; s.seq[slot]=nil
     end
     if command=="sync" then
         list(p)
-        if s then publish(s) else emit(p,"left",{message="No active session. Join a nearby court."}) end
+        if s then refreshPause(s); publish(s) else emit(p,"left",{message="No active session. Join a nearby court."}) end
         return
     end
     if command=="leave" then if s then close(s,"A participant left. Join again for a new game.") end; return end
@@ -166,7 +240,10 @@ function S.dispatch(p,command,args)
         end
         if not integer(args.z,0,7) then fail(p,"Invalid floor."); return end
         local c={x1=math.min(args.x1,args.x2),x2=math.max(args.x1,args.x2),y1=math.min(args.y1,args.y2),y2=math.max(args.y1,args.y2),z=args.z,mode=args.mode}
-        if c.x2-c.x1<6 or c.x2-c.x1>14 or c.y2-c.y1<12 or c.y2-c.y1>30 then fail(p,"Court width must be 6-14 and length 12-30 tiles (north/south)."); return end
+        local limits=PTCore.courtLimits
+        if c.x2-c.x1<limits.minWidth or c.x2-c.x1>limits.maxWidth or c.y2-c.y1<limits.minLength or c.y2-c.y1>limits.maxLength then
+            fail(p,"Court width must be "..limits.minWidth.."-"..limits.maxWidth.." and length "..limits.minLength.."-"..limits.maxLength.." tiles (north/south)."); return
+        end
         if not near(p,c,3) then fail(p,"Stand beside the court to register it."); return end
         local db=database()
         local ok,why=clearCourt(c)
@@ -176,6 +253,7 @@ function S.dispatch(p,command,args)
             if S.sessions[id] then close(S.sessions[id],"The registered court was replaced.") end
         end
         db.courts={}
+        db.sets={}
         db.nextId=db.nextId+1; c.id=tostring(db.nextId); c.owner=who; c.bestRally=0
         db.courts[c.id]=c
         emit(p,"created",{id=c.id})
@@ -187,11 +265,17 @@ function S.dispatch(p,command,args)
     end
     if command=="remove" then
         local c=database().courts[args.id]
-        if not c or not near(p,c,5) or (c.owner~=who and p:getAccessLevel()~="admin") or S.sessions[c.id] then fail(p,"Only the owner/admin may remove a nearby idle court."); return end
+        if not c or not near(p,c,5) or (c.owner~=who and p:getAccessLevel()~="admin") then fail(p,"Only the owner/admin may remove a nearby court."); return end
+        if S.sessions[c.id] then close(S.sessions[c.id],"The registered court was removed.") end
+        database().sets[c.id]=nil
         database().courts[c.id]=nil; list(p); return
     end
     if command=="join" or command=="startSolo" then
-        if s then fail(p,"Leave your current session first."); return end
+        if s then
+            if args.id==s.core.court.id then refreshPause(s); publish(s)
+            else fail(p,"Leave your current session first.") end
+            return
+        end
         local c=database().courts[args.id]
         if not c or not near(p,c,4) then fail(p,"Court not found nearby."); return end
         if c.mode~="tennis" then fail(p,"Wall practice no longer needs court registration. Aim at a nearby wall."); return end
@@ -205,10 +289,10 @@ function S.dispatch(p,command,args)
             s=newSession(c)
             if not s then fail(p,"Server session limit reached."); return end
         end
-        local slot=not s.players[1] and 1 or (c.mode=="tennis" and not s.players[2] and 2 or nil)
+        local slot=not s.names[1] and 1 or (c.mode=="tennis" and not s.names[2] and 2 or nil)
         if not slot then fail(p,"Court is full."); return end
         if command=="startSolo" then PTCore.enableTestTarget(s.core) end
-        s.players[slot]=p; S.members[who]=s; publish(s); return
+        s.players[slot]=p; s.names[slot]=who; S.members[who]=s; refreshPause(s); publish(s); return
     end
     if command~="serve" and command~="swing" and command~="feed" then return end
     if not s or args.session~=s.id then fail(p,"Session changed; sync and join again."); return end
@@ -219,13 +303,18 @@ function S.dispatch(p,command,args)
     if s.core.court.mode=="tennis" and not s.core.testTarget and not (s.players[1] and s.players[2]) then fail(p,"Waiting for a second player."); publish(s); return end
     if not near(p,s.core.court,2) or p:getVehicle() then fail(p,"Stay on the court, alive and on foot."); return end
     if not sportsRacket(p) then fail(p,"Equip an intact SPORTS Tennis Racket in your primary hand."); return end
+    refreshPause(s)
+    if s.core.paused then fail(p,s.core.message); publish(s); return end
     if s.core.court.freeWall then
         local ok,why=PTWall.valid(s.core.court,squareAt,p:getX(),p:getY())
         if not ok then close(s,why); return end
     end
     if command=="serve" or command=="feed" then
         if not ballInHand(p) then fail(p,"Hold a Tennis Ball in your secondary hand to serve."); return end
-        local ok,why=clearCourt(s.core.court); if not ok then close(s,why); return end
+        local ok,why=clearCourt(s.core.court); if not ok then
+            if s.core.court.mode=="tennis" then pause(s,why); publish(s) else close(s,why) end
+            return
+        end
         if s.core.court.mode=="tennis" and s.core.phase=="ready" then
             PTCore.refreshTestTarget(s.core)
             local servingSlot=command=="feed" and 2 or slot
@@ -266,6 +355,7 @@ local function onlineSet()
     return result
 end
 function S.tick()
+    restore()
     local t=now()
     local delta=t-(S.lastTick or t); S.lastTick=t
     if delta<0 then delta=0 end
@@ -283,6 +373,9 @@ function S.tick()
                 local who=key(s.players[1]); local records=database().wallBest
                 records[who]=math.max(records[who] or 0,s.core.bestRally or 0)
             end
+            if s.core.court.mode=="tennis" then
+                if not stored then reason="The registered court was removed." end
+            else
             if settings().Enabled==false then reason="Tennis disabled by server." end
             for i=1,2 do
                 local p=s.players[i]
@@ -290,10 +383,14 @@ function S.tick()
             end
             local valid,why=clearCourt(s.core.court)
             if not valid then reason=why end
+            end
             if reason then closing[#closing+1]={s=s,reason=reason} end
         end
         for _,entry in ipairs(closing) do close(entry.s,entry.reason) end
     end
+    -- Check availability before every physics advance, not only the slow audit:
+    -- dropping a racket/disconnecting must never lose the current point.
+    for _,s in pairs(S.sessions) do refreshPause(s) end
     -- A long server stall is a let: replay current point rather than integrate a lethal catch-up burst.
     if delta>0.5 then
         for _,s in pairs(S.sessions) do
@@ -307,7 +404,7 @@ function S.tick()
         for _,s in pairs(S.sessions) do
             local c=s.core.court
             local old=s.core.ball and {x=s.core.ball.x,y=s.core.ball.y}
-            PTCore.step(s.core,1/30)
+            if not s.core.paused then PTCore.step(s.core,1/30) end
             local ball=s.core.ball
             if c.freeWall and old and ball and not wallPath(c,old.x,old.y,ball.x,ball.y) then
                 s.core.ball=nil; s.core.phase="ready"; s.core.rally=0
@@ -315,6 +412,16 @@ function S.tick()
             end
         end
         S.accumulator=S.accumulator-1/30
+    end
+    local finished={}
+    for _,s in pairs(S.sessions) do
+        if s.core.phase=="finished" then finished[#finished+1]=s else save(s) end
+    end
+    for _,s in ipairs(finished) do
+        publish(s)
+        -- Keep the final scoreboard on clients until a deliberate new join.
+        for _,who in pairs(s.names or {}) do S.members[who]=nil end
+        S.sessions[s.core.court.id]=nil; database().sets[s.core.court.id]=nil
     end
     if t-(S.lastSend or 0)>=0.1 then
         S.lastSend=t

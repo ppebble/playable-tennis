@@ -2,7 +2,6 @@
   "Sandbox_PlayableTennis": "플레이어블 테니스",
   "Sandbox_PlayableTennis_Enabled": "테니스 및 벽 연습 활성화",
   "Sandbox_PlayableTennis_AllowCourtCreation": "플레이어 코트 등록 허용",
-  "Sandbox_PlayableTennis_GamesToWin": "승리에 필요한 게임 수 (선취)",
-  "Sandbox_PlayableTennis_BallSpeed": "공의 수평 속도",
+  "Sandbox_PlayableTennis_BallSpeed": "공의 속도 (궤적 자동 보정)",
   "Sandbox_PlayableTennis_HitRadius": "라켓 타격 거리 (타일)"
 }

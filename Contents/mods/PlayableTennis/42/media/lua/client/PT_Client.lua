@@ -35,7 +35,8 @@ end
 local function mouseEligible(p)
     if not p or not C.session or not C.core then return false end
     if C.waiting then return false,"Waiting for a second player. For solo testing, leave and choose Solo test." end
-    if C.core.phase=="finished" then return false,"Match finished. Leave and join again to play." end
+    if C.core.paused then return false,C.core.message or "Game paused. Both players must return with their rackets." end
+    if C.core.phase=="finished" then return false,"Game finished. Use the court menu to join or start again." end
     if p:isDead() or p:getVehicle() then return false,"Stay alive and on foot to play tennis." end
     local c=C.core.court
     if p:getZ()~=c.z or not PTWall.contains(c,p:getX(),p:getY(),2) then return false,"Return to the court and its floor to play tennis." end
@@ -82,7 +83,7 @@ local function sync()
 end
 local function leave()
     if C.session then C.retired[C.session] = true end
-    C.session, C.core, C.previousBall = nil, nil, nil
+    C.session, C.core, C.previousBall, C.ballSamples = nil, nil, nil, nil
     releaseGuard(false)
     C.joinPending = false
     send("leave", {})
@@ -96,11 +97,15 @@ local function startSolo(id)
     send("startSolo",{id=id})
 end
 local function removeCourt(id) send("remove", { id = id }) end
+local function canStartPractice()
+    return not C.session or (C.core and C.core.phase=="finished")
+end
 local function startWallAt(args)
-    if C.session then notice("Leave your current match/practice first."); return end
+    if not canStartPractice() then notice("Leave your current match/practice first."); return end
     if not equippedToStart(player()) then notice("Hold a sports racket in your primary hand and Tennis Ball in your secondary hand."); return end
     if now()<(C.wallPendingUntil or 0) then return end
     C.wallPendingUntil=now()+500
+    C.joinPending=true
     swingAnimation()
     send("startWall",args)
 end
@@ -116,11 +121,12 @@ function C.receive(command, args)
     elseif command == "left" then
         if args.session and C.session and args.session ~= C.session then return end
         if C.session then C.retired[C.session] = true end
-        C.session, C.core, C.previousBall = nil, nil, nil
+        C.session, C.core, C.previousBall, C.ballSamples = nil, nil, nil, nil
         releaseGuard(false)
         C.joinPending = false
         notice(args.message or "Left court.")
     elseif command == "state" and args.core and args.session then
+        if C.suspended then return end
         if C.retired[args.session] then return end
         if C.session and C.session ~= args.session and not C.joinPending then return end
         local revision = tonumber(args.revision) or 0
@@ -140,8 +146,24 @@ function C.receive(command, args)
         else
             C.previousBall = nil
         end
-        local elapsed = sameSession and C.receivedAt and now()-C.receivedAt or 100
-        C.ballInterval = elapsed > 0 and math.max(50,math.min(200,elapsed)) or 100
+        -- Simulation timestamps keep arrival jitter from restarting a segment.
+        local stamp=tonumber(args.core.clock) or revision*0.1
+        local samples=C.ballSamples
+        if not C.previousBall or not samples or not samples[1] or stamp<samples[#samples].time then
+            samples={}
+            C.ballAnchorTime,C.ballAnchorAt,C.ballRenderTime=stamp,now(),nil
+        end
+        if args.core.ball then
+            local sample={time=stamp,ball=args.core.ball,bounces=args.core.bounces or 0}
+            if samples[#samples] and samples[#samples].time==stamp then samples[#samples]=sample
+            else samples[#samples+1]=sample end
+            while #samples>8 do table.remove(samples,1) end
+            -- Recover the clock mapping after a simulation pause/network stall.
+            if C.ballAnchorTime+(now()-C.ballAnchorAt)/1000-stamp>0.3 then
+                C.ballAnchorTime,C.ballAnchorAt=stamp,now()
+            end
+        else samples={} end
+        C.ballSamples=samples
         C.session, C.slot, C.core = args.session, args.slot, args.core
         C.waiting, C.names = args.waiting, args.players
         C.seq = math.max(C.seq, tonumber(args.lastSeq) or 0)
@@ -204,7 +226,7 @@ local function mouseDown()
     -- This event is emitted only for a world click unconsumed by other UI.
     -- Its return value does not cancel combat: OnPlayerUpdate applies the gate.
     if inputBlocked() or C.textWasFocused then return end
-    if not C.session then
+    if canStartPractice() then
         if not isMouseButtonDown(1) then return end
         if equippedToStart(p) then
             startWallAt({x=screenToIsoX(0,getMouseX(),getMouseY(),p:getZ()),y=screenToIsoY(0,getMouseX(),getMouseY(),p:getZ())})
@@ -257,7 +279,7 @@ local function contextMenu(playerIndex, context, objects, test)
     context:addSubMenu(root, menu)
     menu:addOption("Draw / replace court (rectangle selection)",nil,drawCourt)
     menu:addOption("Refresh court list / synchronize", nil, sync)
-    if not C.session then
+    if canStartPractice() then
         menu:addOption("Start wall practice here (sports racket + ball in hands)",
             {x=square:getX()+0.5,y=square:getY()+0.5},startWallAt)
     end
@@ -267,9 +289,9 @@ local function contextMenu(playerIndex, context, objects, test)
             and math.abs(p:getX() - court.x1) < 100 and math.abs(p:getY() - court.y1) < 100 then
             if court.mode=="tennis" then
                 menu:addOption("Join " .. tostring(court.id) .. " (" .. tostring(court.mode) .. ")",court.id,join)
-                if not C.session then menu:addOption("Solo test: diagonal return target",court.id,startSolo) end
+                if canStartPractice() then menu:addOption("Solo test: diagonal return target",court.id,startSolo) end
             end
-            menu:addOption("Remove " .. tostring(court.id) .. " (owner/admin, idle)", court.id, removeCourt)
+            menu:addOption("Remove " .. tostring(court.id) .. " (owner/admin; ends its game)", court.id, removeCourt)
             count = count + 1
             if count >= 20 then break end
         end
@@ -284,6 +306,7 @@ local function contextMenu(playerIndex, context, objects, test)
 end
 local Overlay = ISPanel:derive("PT_Overlay")
 local function score(core)
+    if core.phase=="finished" and core.winner then return "Slot "..tostring(core.winner).." wins" end
     local a,b = core.points[1],core.points[2]
     if a >= 3 and b >= 3 then
         if a == b then return "Deuce" end
@@ -301,9 +324,20 @@ end
 function C.ballPosition()
     local ball=C.core and C.core.ball
     if not ball then return end
-    local old=C.previousBall
-    if not old then return ball.x,ball.y,ball.z end
-    local t=math.max(0,math.min(1,(now()-C.receivedAt)/(C.ballInterval or 100)))
+    local samples=C.ballSamples
+    if not samples or #samples<2 then return ball.x,ball.y,ball.z end
+    local renderTime=C.ballAnchorTime+(now()-C.ballAnchorAt)/1000-0.1
+    renderTime=math.max(C.ballRenderTime or samples[1].time,math.min(samples[#samples].time,renderTime))
+    C.ballRenderTime=renderTime
+    local first,last=samples[1],samples[#samples]
+    for i=2,#samples do
+        if samples[i].time>=renderTime then first,last=samples[i-1],samples[i]; break end
+    end
+    local duration=last.time-first.time
+    local t=duration>0 and math.max(0,math.min(1,(renderTime-first.time)/duration)) or 1
+    local old=first.ball
+    ball=last.ball
+    local x=old.x+(ball.x-old.x)*t
     local y=old.y+(ball.y-old.y)*t
     local court=C.core.court
     if court.mode=="wall" and old.vy and ball.vy and old.vy<0 and ball.vy>0
@@ -319,7 +353,39 @@ function C.ballPosition()
                 or court.y1+ball.vy*(elapsed-incoming)
         end
     end
-    return old.x+(ball.x-old.x)*t,y,old.z+(ball.z-old.z)*t
+    local z=old.z+(ball.z-old.z)*t
+    if old.vz and ball.vz and duration>0 then
+        local gravity=9.8
+        if last.bounces>first.bounces then
+            local contact=(old.vz+math.sqrt(old.vz*old.vz+2*gravity*math.max(0,old.z)))/gravity
+            if contact>0 and contact<duration then
+                local elapsed=t*duration
+                if court.mode=="tennis" and old.vx and old.vy then
+                    -- The server slows horizontal travel at a floor bounce.
+                    -- Preserve that contact instead of smearing both speeds
+                    -- into a single line across the whole snapshot interval.
+                    local cx,cy=old.x+old.vx*contact,old.y+old.vy*contact
+                    if elapsed<=contact then
+                        x,y=old.x+old.vx*elapsed,old.y+old.vy*elapsed
+                    else
+                        local after=(elapsed-contact)/(duration-contact)
+                        x,y=cx+(ball.x-cx)*after,cy+(ball.y-cy)*after
+                    end
+                end
+                if elapsed<=contact then
+                    z=old.z+old.vz*elapsed-gravity*elapsed*elapsed/2
+                else
+                    local remaining=duration-contact
+                    local launch=(ball.z+gravity*remaining*remaining/2)/remaining
+                    local after=elapsed-contact
+                    z=launch*after-gravity*after*after/2
+                end
+            end
+        else
+            z=z+gravity*duration*duration*t*(1-t)/2
+        end
+    end
+    return x,y,math.max(0,z)
 end
 local worldBallRender = Events.OnPostRender and getRenderer and getPlayer
 local function drawBall(draw)
@@ -444,7 +510,7 @@ function Overlay:render()
             self:drawText(text,x+10,y+8+row*21,r or 1,g or 1,b or 1,1,UIFont.Small)
         end
         line("Playable Tennis | " .. (core.testTarget and "SOLO TEST" or court.mode) .. " | Slot " .. tostring(C.slot),0)
-        line("Games " .. core.games[1] .. " : " .. core.games[2] .. "    " .. score(core) .. "    " .. core.phase,1)
+        line(score(core) .. "    " .. core.phase,1)
         if court.mode == "wall" then
             line("Rally " .. tostring(core.rally) .. " | Best " .. tostring(core.bestRally)
                 .. " | Wall " .. tostring((court.wallMaxX or x2)-(court.wallMinX or x1))
@@ -461,7 +527,7 @@ function Overlay:render()
         line(court.mode == "wall" and ("Depth " .. tostring(y2-y1) .. " tiles | Hold ball + RMB/LMB to restart.")
             or "Green serve box: " .. (servingSlot==1 and "NORTH" or "SOUTH") .. ", " .. side .. ".",4)
         local readyMessage
-        if court.mode=="tennis" and core.phase=="ready" and core.receiverReady~=nil then
+        if not core.paused and court.mode=="tennis" and core.phase=="ready" and core.receiverReady~=nil then
             readyMessage=core.receiverReady and "Receiver ready - serve when ready."
                 or "Waiting for receiver in blue area with racket."
         end
@@ -484,14 +550,22 @@ function Overlay:render()
 end
 local function tick()
     C.textWasFocused=inputBlocked()
-    if C.session and now() - C.lastSync > 5000 and now() - (C.receivedAt or 0) > 1500 then sync() end
+    if C.session and C.core and C.core.phase~="finished"
+        and now() - C.lastSync > 5000 and now() - (C.receivedAt or 0) > 1500 then sync() end
 end
 local function start()
+    local p=player()
+    if not p or p:isDead() then return end
+    -- OnCreatePlayer and OnGameStart can both fire for initial creation.
+    -- Respawning needs this setup again, but a second event must not erase
+    -- the snapshot already restored by the first event's sync.
+    if C.overlay and C.activePlayer==p and not C.suspended then return end
     PTCourtSelector.cancel()
     releaseGuard(true)
     if C.overlay then C.overlay:removeFromUIManager() end
-    C.session, C.core, C.previousBall, C.draft = nil, nil, nil, nil
-    C.retired, C.courts, C.seq, C.revision = {}, {}, 0, -1
+    C.session, C.core, C.previousBall, C.draft, C.ballSamples = nil, nil, nil, nil, nil
+    C.courts, C.seq, C.revision = {}, 0, -1
+    C.suspended,C.activePlayer,C.joinPending=false,p,false
     -- B42 top-level isPointOver occludes lower UI even with consumeMouseEvents=false.
     -- A zero-area display panel still renders absolute coordinates, but cannot
     -- cover inventory/context-menu hit tests or redirect their wheel to zoom.
@@ -506,8 +580,10 @@ end
 local function stop()
     PTCourtSelector.cancel()
     releaseGuard(true)
-    if C.session then C.retired[C.session]=true end
-    C.session,C.core,C.previousBall=nil,nil,nil
+    -- Death/disconnect only suspend local presentation. The server retains
+    -- this player's court and score; its same session ID must be resumable.
+    C.suspended,C.activePlayer,C.joinPending=true,nil,false
+    C.session,C.core,C.previousBall,C.ballSamples=nil,nil,nil,nil
     if C.overlay then C.overlay:removeFromUIManager(); C.overlay=nil end
 end
 Events.OnServerCommand.Add(function(module,command,args)
@@ -522,4 +598,5 @@ Events.OnPlayerDeath.Add(function(p) if p==player() or (C.attackGuard and C.atta
 Events.OnDisconnect.Add(stop)
 Events.OnMainMenuEnter.Add(stop)
 Events.OnGameStart.Add(start)
+Events.OnCreatePlayer.Add(function(index) if index==0 then start() end end)
 Events.OnTick.Add(tick)

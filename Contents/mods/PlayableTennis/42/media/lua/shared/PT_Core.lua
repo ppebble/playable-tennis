@@ -1,5 +1,6 @@
 -- Pure Lua 5.1 / Kahlua simulation. The server alone advances this state.
 PTCore = {}
+PTCore.courtLimits = {minWidth=8, maxWidth=10, minLength=18, maxLength=20}
 local STEP, GRAVITY, NET_HEIGHT = 1 / 120, 9.8, 0.91
 local function copy(value)
     if type(value) ~= "table" then return value end
@@ -33,17 +34,11 @@ local function point(s, winner, reason)
     s.points[winner] = s.points[winner] + 1
     local other = 3 - winner
     local message = reason .. " Point: player " .. winner .. "."
-    if s.points[winner] >= 4 and s.points[winner] - s.points[other] >= 2 then
-        s.games[winner] = s.games[winner] + 1
-        s.points = {0, 0}
-        s.server = 3 - s.server
-        message = reason .. " Game: player " .. winner .. "."
-    end
     s.faults = 0
     resetBall(s, message)
-    if s.games[winner] >= s.options.gamesToWin then
+    if s.points[winner] >= 4 and s.points[winner] - s.points[other] >= 2 then
         s.phase, s.winner = "finished", winner
-        s.message = "Match won by player " .. winner .. "."
+        s.message = "Player " .. winner .. " wins."
     end
 end
 local function failShot(s, reason)
@@ -78,7 +73,18 @@ local function landing(s)
     end
     s.bounces = s.bounces + 1
     b.z = 0
-    b.vz = math.max(2.5, -b.vz * 0.78)
+    if c.mode == "wall" then
+        b.vz = math.max(2.5, -b.vz * 0.78)
+    else
+        -- Keep tennis rebounds inside the racket-height envelope.
+        b.vz = math.sqrt(2 * GRAVITY * 1.1)
+        -- At least 0.75 seconds from bounce to the receiving baseline,
+        -- including existing oversized saved courts.
+        local baseline = b.vy > 0 and c.y2 or c.y1
+        local maxVy = math.abs(baseline - b.y) / 0.75
+        local scale = math.min(1, maxVy / math.max(0.001, math.abs(b.vy)))
+        b.vx, b.vy = b.vx * scale, b.vy * scale
+    end
 end
 local function integrate(s, dt)
     local b, c = s.ball, s.court
@@ -136,6 +142,13 @@ local function launch(s, x, y, z, tx, ty, wall)
             end
         end
     end
+    if not wall then
+        -- Apply after net clearance: physically impossible low, close-net
+        -- returns fault rather than creating an arbitrarily high lob.
+        local rise = math.sqrt(2 * GRAVITY * math.max(0, 2.4 - z))
+        local maxDuration = (rise + math.sqrt(rise * rise + 2 * GRAVITY * z)) / GRAVITY
+        duration = math.min(duration, maxDuration)
+    end
     s.ball = {x = x, y = y, z = z, vx = dx / duration, vy = dy / duration,
         vz = (targetZ - z + 0.5 * GRAVITY * duration * duration) / duration}
 end
@@ -145,9 +158,8 @@ function PTCore.new(court, options)
         local v = options[name]
         return finite(v) and clamp(v, lo, hi) or default
     end
-    return {court = copy(court), options = {gamesToWin = math.floor(option("gamesToWin", 2, 1, 6)),
-        ballSpeed = option("ballSpeed", 9, 5, 14), hitRadius = option("hitRadius", 1.8, 0.75, 3)},
-        phase = "ready", server = 1, points = {0, 0}, games = {0, 0}, winner = 0,
+    return {court = copy(court), options = {ballSpeed = option("ballSpeed", 9, 5, 14), hitRadius = option("hitRadius", 1.8, 0.75, 3)},
+        phase = "ready", server = 1, points = {0, 0}, winner = 0,
         ball = nil, lastHit = 0, shotId = 0, bounces = 0, faults = 0, rally = 0, bestRally = 0,
         clock = 0, accumulator = 0, lastSwing = {-100, -100},
         message = "Ready. Serve from your baseline and the indicated service side."}
@@ -175,7 +187,7 @@ function PTCore.aimTarget(s, slot, aim, serving)
             midY(s) + (slot == 1 and 1 or -1) * length * 0.16
     end
     return midX(s) + aim * width * 0.3,
-        midY(s) + (slot == 1 and 1 or -1) * length * 0.32
+        midY(s) + (slot == 1 and 1 or -1) * length * 0.225
 end
 -- Presentation shares the server's service coordinates and side selection.
 function PTCore.serveArea(s, slot)

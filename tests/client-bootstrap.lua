@@ -36,7 +36,7 @@ UIFont={Small=1}
 function isoToScreenX(_,x,y,z) return x*10-y*10 end
 function isoToScreenY(_,x,y,z) return x*5+y*5-z*30 end
 Events={}
-for _,name in ipairs({'OnServerCommand','OnFillWorldObjectContextMenu','OnKeyPressed','OnMouseDown','OnPlayerUpdate','OnPlayerDeath','OnDisconnect','OnMainMenuEnter','OnGameStart','OnTick'}) do
+for _,name in ipairs({'OnServerCommand','OnFillWorldObjectContextMenu','OnKeyPressed','OnMouseDown','OnPlayerUpdate','OnPlayerDeath','OnDisconnect','OnMainMenuEnter','OnGameStart','OnCreatePlayer','OnTick'}) do
     local event={}
     event.Add=function(fn) event.callback=fn end
     Events[name]=event

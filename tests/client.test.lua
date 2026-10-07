@@ -15,6 +15,7 @@ PTClient.receive('state',snapshot(1,'rally',99))
 check(PTClient.core.ball.x==1,'duplicate revision ignored')
 PTClient.receive('state',snapshot(0,'rally',99))
 check(PTClient.core.ball.x==1,'older revision ignored')
+ClientMock.time=ClientMock.time+100
 PTClient.receive('state',snapshot(2,'rally',3,'a',6))
 check(PTClient.previousBall.x==1,'continuous rally retains interpolation origin')
 ClientMock.time=ClientMock.time+50
@@ -173,8 +174,10 @@ check(not p.banned and not PTClient.session,'disconnect restores native baseline
 PTClient.receive('state',snapshot(8,'ready',nil,'rotated'))
 check(not PTClient.session,'late disconnected state cannot resurrect')
 p.x=nil; p.y=nil
+Events.OnGameStart.callback()
 PTClient.receive('state',snapshot(1,'ready',nil,'death')); update(); Events.OnPlayerDeath.callback(p)
 check(not p.banned and not PTClient.session,'death clears guard and session')
+Events.OnCreatePlayer.callback(0)
 PTClient.receive('state',snapshot(1,'ready',nil,'menu')); update(); Events.OnMainMenuEnter.callback()
 check(not p.banned and not PTClient.session,'main menu clears guard and session')
 -- Each point starts with RMB+LMB; all subsequent returns need only LMB.
@@ -290,3 +293,84 @@ receiverState=snapshot(3,'ready',nil,'receiver-ready'); receiverState.core.recei
 PTClient.receive('state',receiverState); before=#ClientMock.sent; click()
 check(#ClientMock.sent==before,'receiver leaving ready area blocks the next serve')
 print('PASS client checks: '..checks)
+
+-- A persistent paused game keeps scores visible and cannot emit cosmetic swings.
+local paused=snapshot(1,'ready',nil,'paused-score')
+paused.core.paused=true; paused.core.message='Return with both rackets to resume.'
+paused.core.points={2,3}; paused.core.games=nil
+PTClient.receive('left',{session=PTClient.session})
+PTClient.receive('state',paused)
+local commands,swings=#ClientMock.sent,ClientMock.swings or 0
+ClientMock.focused=false; ClientMock.buttons={[0]=true,[1]=true}
+Events.OnKeyPressed.callback(Keyboard.KEY_K)
+check(#ClientMock.sent==commands and (ClientMock.swings or 0)==swings,'paused game blocks serve animation and command')
+local labels={}
+PTClient.overlay.drawText=function(self,text) labels[#labels+1]=text end
+PTClient.overlay:render()
+local pointScore,overall,pausedMessage=false,false,false
+for _,text in ipairs(labels) do
+    if string.find(text,'30 : 40',1,true) then pointScore=true end
+    if string.find(text,'Games ',1,true) then overall=true end
+    if string.find(text,paused.core.message,1,true) then pausedMessage=true end
+end
+check(pointScore and not overall,'HUD shows point score without requiring overall games tally')
+check(pausedMessage,'pause explanation is not overwritten by receiver readiness')
+
+paused.revision=2; paused.core.paused=false; paused.core.phase='finished'; paused.core.winner=2
+PTClient.receive('state',paused)
+labels={}; PTClient.overlay:render()
+local winner=false
+for _,text in ipairs(labels) do if string.find(text,'Slot 2 wins',1,true) then winner=true end end
+check(winner,'finished game clearly labels the winner without an overall score')
+
+PTClient.receive('list',{courts={{id='again',x1=0,y1=0,x2=8,y2=18,z=0,mode='tennis'}}})
+local againMenu=ClientMock.menu()
+Events.OnFillWorldObjectContextMenu.callback(0,againMenu,{{getSquare=function() return square end}},false)
+local soloOption,wallOption,removeOption
+for _,option in ipairs(againMenu.submenu.options) do
+    if option.name=='Solo test: diagonal return target' then soloOption=option end
+    if string.find(option.name,'Start wall practice',1,true) then wallOption=option end
+    if string.find(option.name,'Remove again',1,true) then removeOption=option end
+end
+check(soloOption and wallOption,'finished game exposes both practice starts without leave')
+check(removeOption and string.find(removeOption.name,'ends its game',1,true),'removal menu explains active game termination')
+soloOption.callback(soloOption.target)
+check(last().command=='startSolo' and PTClient.joinPending,'finished game can request another solo game directly')
+-- A wall restart must accept the server response from its new session as well.
+ClientMock.time=ClientMock.time+600
+wallOption.callback(wallOption.target)
+check(last().command=='startWall' and PTClient.joinPending,'finished game can request wall practice directly')
+PTClient.receive('state',snapshot(1,'rally',1,'restart-wall'))
+check(PTClient.session=='restart-wall' and PTClient.retired['paused-score'],'restart accepts new session and retires final-score session')
+
+-- Death is a temporary lifecycle stop, not explicit court withdrawal.
+local saved=snapshot(2,'ready',nil,'restart-wall'); saved.core.points={2,3}
+PTClient.receive('state',saved)
+local sentBeforeDeath=#ClientMock.sent
+p.dead=true; Events.OnPlayerDeath.callback(p)
+check(PTClient.suspended and not PTClient.overlay and not PTClient.retired['restart-wall'],
+    'death suspends presentation without retiring persistent server session')
+PTClient.receive('state',saved)
+check(not PTClient.session and #ClientMock.sent==sentBeforeDeath,'dead client ignores delayed state and sends no leave')
+p.dead=false
+Events.OnCreatePlayer.callback(1)
+check(not PTClient.overlay,'other split-screen player creation does not resume player zero')
+Events.OnCreatePlayer.callback(0)
+check(PTClient.overlay and last().command=='sync','local respawn restores overlay and synchronizes')
+PTClient.receive('state',saved)
+check(PTClient.session=='restart-wall' and PTClient.core.points[1]==2 and PTClient.core.points[2]==3,
+    'same-ID server snapshot restores saved points after respawn')
+local restoredOverlay=PTClient.overlay
+local afterRespawn=#ClientMock.sent
+Events.OnGameStart.callback(); Events.OnCreatePlayer.callback(0)
+check(PTClient.overlay==restoredOverlay and PTClient.session=='restart-wall' and #ClientMock.sent==afterRespawn,
+    'creation/start event order is idempotent and preserves resumed snapshot')
+check(PTClient.retired['paused-score'],'temporary recovery preserves explicitly retired session guard')
+
+local finalState=snapshot(3,'finished',nil,'restart-wall'); finalState.core.winner=1
+PTClient.receive('state',finalState)
+local beforeFinalTick=#ClientMock.sent
+ClientMock.time=ClientMock.time+10000
+Events.OnTick.callback()
+check(#ClientMock.sent==beforeFinalTick and PTClient.core.winner==1,
+    'finished scoreboard remains visible instead of stale auto-sync asking server for released membership')

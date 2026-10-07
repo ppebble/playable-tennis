@@ -14,15 +14,6 @@ option PlayableTennis.AllowCourtCreation
     page = PlayableTennis,
     translation = PlayableTennis_AllowCourtCreation,
 }
-option PlayableTennis.GamesToWin
-{
-    type = integer,
-    min = 1,
-    max = 6,
-    default = 2,
-    page = PlayableTennis,
-    translation = PlayableTennis_GamesToWin,
-}
 option PlayableTennis.BallSpeed
 {
     type = integer,

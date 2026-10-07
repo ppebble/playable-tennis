@@ -44,6 +44,10 @@ for _,z in ipairs({-1,8,0.5,math.huge}) do
 end
 local id=create(a)
 check(db().courts[id]~=nil,"valid court persisted")
+for _,size in ipairs({{7,20},{11,20},{8,17},{8,21}}) do
+    command(a,"create",{x1=100,y1=100,x2=100+size[1],y2=100+size[2],z=0,mode="tennis"})
+    check(last().command=="error" and db().courts[id],"new court dimension limits preserve old valid registration")
+end
 create(a)
 check(last().command=="list" and db().nextId==2 and not db().courts[id],"overlapping registration replaces old court")
 for i=1,3 do create(a,"tennis",100+i*20) end
@@ -107,17 +111,19 @@ local points=s.core.points[1]+s.core.points[2]
 M.time=M.time+700; S.tick()
 check(s.core.phase=="ready" and not s.core.ball and s.core.points[1]+s.core.points[2]==points,"server stall replays point without awarding score")
 
-for _,cause in ipairs({"disconnect","vehicle","death","distance","floor","disabled"}) do
+for _,cause in ipairs({"disconnect","vehicle","death","distance","floor","disabled","racket"}) do
     a,id,s=setup("tennis")
+    s.core.points={2,3}
     if cause=="disconnect" then M.players={}
     elseif cause=="vehicle" then a.vehicle={}
     elseif cause=="death" then a.dead=true
     elseif cause=="distance" then a.x=1000
     elseif cause=="floor" then M.square(102,106,0).floor=false
+    elseif cause=="racket" then a.racket=false
     else SandboxVars.PlayableTennis.Enabled=false end
     audit()
-    check(not S.sessions[id] and not S.members.alpha,"audit closes on "..cause)
-    check(last().command=="left","closure informs participant: "..cause)
+    check(S.sessions[id]==s and S.members.alpha==s and s.core.paused,"audit preserves and pauses on "..cause)
+    check(s.core.points[1]==2 and s.core.points[2]==3 and db().sets[id].names[1]=="alpha","reserved identity and score saved: "..cause)
 end
 
 a,id,s=setup("tennis")
@@ -133,9 +139,7 @@ check(S.members.beta.id~=s2.id,"rejoin creates fresh session")
 input(b,S.members.beta,1,{session=s2.id})
 check(S.members.beta.seq[1]==nil,"stale session input rejected")
 command(b,"remove",{id=id2})
-check(db().courts[id2]~=nil,"active court removal rejected")
-command(b,"leave",{}); command(b,"remove",{id=id2})
-check(db().courts[id2]==nil,"owner removes idle court")
+check(db().courts[id2]==nil and not S.members.beta and not db().sets[id2],"owner removal ends active saved set")
 check(M.command and M.tick,"production event handlers registered")
 a,id,s=setup("tennis")
 b=M.player("beta",106,120); command(b,"join",{id=id})
@@ -233,7 +237,7 @@ for _,edge in ipairs({"N","W"}) do
 end
 M.reset(); a=M.player("alpha")
 create(a,"wall")
-check(last().command=="error" and not db().nextId,"wall court registration rejected")
+check(last().command=="error" and db().nextId==0,"wall court registration rejected")
 db().courts={legacy={id="legacy",mode="wall",x1=100,x2=108,y1=100,y2=120,z=0}}
 command(a,"join",{id="legacy"})
 check(last().command=="error" and not S.members.alpha,"legacy wall registry cannot be joined")
@@ -378,5 +382,68 @@ S.tick(); M.time=M.time+700; S.tick()
 receiveArea=PTCore.receiveArea(s.core,1)
 check(s.core.phase=="ready" and s.core.testTarget.x==receiveArea.x and s.core.testTarget.y==receiveArea.y,"stall let repositions solo target for human serve")
 check(s.core.receiverReady,"solo target is immediately ready after let")
+-- Persist only serializable values, restore a new runtime, and explicitly rebind
+-- the authenticated live username without exposing either reserved slot.
+a,id,s=setup("tennis")
+b=M.player("beta",106,120); command(b,"join",{id=id})
+s.core.points={3,3}; s.core.faults=1
+input(a,s,1)
+check(s.core.phase=="rally","persistence fixture starts a live rally")
+a.racket=false
+M.time=M.time+40; S.tick()
+check(s.core.paused and s.core.phase=="ready" and not s.core.ball,"racket drop cancels rally before a point is awarded")
+check(s.core.points[1]==3 and s.core.points[2]==3 and s.core.faults==1,"pause retains deuce and fault count")
+a.racket=true; M.time=M.time+40; S.tick()
+check(not s.core.paused and s.core.phase=="ready","racket return resumes saved point")
+local function serializable(v)
+    if type(v)=="table" then for k,value in pairs(v) do if not serializable(k) or not serializable(value) then return false end end; return true end
+    return type(v)=="string" or type(v)=="number" or type(v)=="boolean" or v==nil
+end
+check(serializable(db().sets),"persistent records contain no player objects or functions")
+local saved=PTCore.snapshot(M.db)
+s.core.points[1]=99
+check(saved.PlayableTennis_v1.sets[id].core.points[1]==3,"persistent snapshot does not alias live score")
+M.reset(); M.db=saved
+a=M.player("alpha",102,100)
+command(a,"sync",{})
+s=S.members.alpha
+check(s and s.players[1]==a and not s.players[2] and s.core.points[1]==3 and s.core.points[2]==3,"restart restores score and rebinds returning username")
+check(s.core.paused and s.names[2]=="beta" and s.core.phase=="ready","restart retains absent participant reservation and replays interrupted rally")
+c=M.player("gamma",106,120); command(c,"join",{id=id})
+check(not S.members.gamma and last().command=="error","stranger cannot take disconnected player's reserved slot")
+b=M.player("beta",106,120); command(b,"join",{id=id})
+check(s.players[2]==b and not s.core.paused and s.core.points[1]==3,"same user join resumes both participants without clearing points")
+local impostor=M.player("alpha",102,100)
+command(impostor,"sync",{})
+check(s.players[1]==a and last().command=="error","duplicate live username cannot hijack reservation")
+M.players={b,impostor}
+command(impostor,"sync",{})
+check(s.players[1]==impostor and s.seq[1]==nil,"replacement connection can rebind after original disconnects")
+impostor.dead=true
+local respawn=M.player("alpha",102,100)
+command(respawn,"sync",{})
+check(s.players[1]==respawn and s.core.points[1]==3,"living respawn rebinds while old dead entity remains listed online")
+command(impostor,"leave",{})
+check(S.sessions[id]==s and S.members.alpha==s,"old dead entity cannot terminate rebound set")
+impostor=respawn
+M.players={impostor}; M.packets={}
+command(impostor,"sync",{})
+for _,packet in ipairs(M.packets) do check(packet.player~=b,"publish does not send to retained disconnected player object") end
+M.packets={}
+command(impostor,"leave",{})
+check(not db().sets[id] and not S.members.beta,"explicit leave clears both reservations and persisted score")
+for _,packet in ipairs(M.packets) do check(packet.player~=b,"close does not send to retained disconnected player object") end
+command(impostor,"join",{id=id}); s=S.members.alpha
+check(s.core.points[1]==0 and s.core.points[2]==0,"deliberate join after leave begins fresh score")
+s.core.phase="finished"; s.core.winner=1
+M.packets={}; M.time=M.time+40; S.tick()
+check(not S.sessions[id] and not db().sets[id] and not S.members.alpha,"victory releases persisted set and reservations")
+check(last().command=="state" and last().args.core.phase=="finished" and last().args.core.winner==1,"victory publishes final scoreboard without a left packet")
+command(impostor,"join",{id=id})
+check(S.members.alpha and S.members.alpha.core.points[1]==0,"new join after victory starts a new set")
+M.reset(); a=M.player("alpha")
+db().courts={legacy={id="legacy",mode="tennis",x1=100,x2=114,y1=100,y2=130,z=0,owner="alpha"}}
+command(a,"join",{id="legacy"})
+check(S.members.alpha~=nil,"existing oversized court remains playable without forced migration")
 checks=(checks or 0)+count
 print("SERVER PASS: "..count.." behavioral checks")

@@ -71,14 +71,14 @@ check(s.points[1] == 1, "second bounce outside still wins for hitter")
 
 s = new({gamesToWin = 1})
 for i = 1, 3 do winPoint(s, 1); winPoint(s, 2) end
-check(s.points[1] == 3 and s.points[2] == 3 and s.games[1] == 0, "deuce")
+check(s.points[1] == 3 and s.points[2] == 3, "deuce")
 winPoint(s, 1)
-check(s.games[1] == 0 and s.points[1] == 4, "advantage is not a game")
+check(s.phase == "ready" and s.points[1] == 4, "advantage is not a game")
 winPoint(s, 2)
-check(s.games[1] == 0 and s.points[1] == s.points[2], "return to deuce")
+check(s.phase == "ready" and s.points[1] == s.points[2], "return to deuce")
 winPoint(s, 1); winPoint(s, 1)
-check(s.games[1] == 1 and s.server == 2 and s.points[1] == 0, "game resets points and switches server")
-check(s.phase == "finished" and s.winner == 1, "first-to-one match completes")
+check(s.server == 1 and s.points[1] == 6, "victory preserves final points without aggregate games or server rotation")
+check(s.phase == "finished" and s.winner == 1, "single points game completes")
 check(not PTCore.serve(s, 2, 6, 18, 0), "finished match cannot restart")
 
 s = new()
@@ -183,7 +183,7 @@ for _, mode in ipairs({"tennis", "wall"}) do
                     expectedY = 9 + (slot == 1 and 1 or -1) * 18 * 0.16
                 else
                     expectedX = 4 + aim * 2.4
-                    expectedY = 9 + (slot == 1 and 1 or -1) * 18 * 0.32
+                    expectedY = 9 + (slot == 1 and 1 or -1) * 18 * 0.225
                 end
                 check(near(tx, expectedX) and near(ty, expectedY), "shared preview preserves serve/wall/rally target formulas")
             end
@@ -358,5 +358,108 @@ for _,length in ipairs({12,18,30}) do
             area=PTCore.receiveArea(state,1)
             check(state.phase=="ready" and state.testTarget.x==area.x and state.testTarget.y==area.y,"point reset updates target to next service diagonal")
         end
+    end
+end
+
+-- Bounded tennis trajectory across new sizes and legacy saved extremes.
+for _,dimensions in ipairs({{8,18},{10,20},{14,30},{6,12}}) do
+    local width,length=dimensions[1],dimensions[2]
+    for _,speed in ipairs({5,9,14}) do
+        for _,slot in ipairs({1,2}) do
+            local state=PTCore.new({mode="tennis",x1=0,x2=width,y1=0,y2=length},{ballSpeed=speed})
+            state.server=slot
+            local area=PTCore.serveArea(state,slot)
+            check(PTCore.serve(state,slot,(area.x1+area.x2)/2,area.baseline,0),"bounded flight starts from either end")
+            local peak,rebound,window,firstTime,firstY=0,0,0,nil,nil
+            local receive=PTCore.receiveArea(state,slot)
+            for i=1,1200 do
+                PTCore.step(state,1/120)
+                local ball=state.ball
+                if not ball then break end
+                if state.bounces==0 then peak=math.max(peak,ball.z)
+                else
+                    rebound=math.max(rebound,ball.z)
+                    if not firstTime then firstTime,firstY=state.clock,ball.y end
+                    if ball.z>=0.15 and ball.z<=2.4 then window=window+1/120 end
+                end
+            end
+            check(firstTime~=nil,"bounded serve lands legally")
+            check(peak<=2.401,"tennis flight apex stays at or below racket maximum")
+            check(rebound<=1.101,"tennis rebound is capped at 1.1 height")
+            check(window>=0.85,"bounce allows at least .85 seconds in legal racket height")
+            check(math.abs(math.abs(firstY-length/2)-length*.16)<0.01,"serve marker is first ground contact")
+            if slot==2 and speed==9 then
+                print("PHYSICS "..width.."x"..length.." feed: apex="..peak.." bouncePeak="..rebound.." firstBounceSeconds="..firstTime.." heightWindow="..window)
+            end
+            state=PTCore.new({mode="tennis",x1=0,x2=width,y1=0,y2=length},{ballSpeed=speed})
+            state.phase,state.lastHit,state.clock="rally",3-slot,1
+            local y=slot==1 and 1 or length-1
+            state.ball={x=width/2,y=y,z=1.2,vx=0,vy=0,vz=0}
+            local tx,ty=PTCore.aimTarget(state,slot,0,false)
+            check(math.abs(math.abs(ty-length/2)/(length/2)-.45)<.00001,"rally first landing is45 percent into opposing half")
+            check(PTCore.swing(state,slot,width/2,y,0),"bounded baseline rally launches")
+            local landed=false
+            for i=1,600 do
+                PTCore.step(state,1/120)
+                if not state.ball then break end
+                if state.bounces==1 then
+                    landed=true
+                    check(math.abs(state.ball.y-ty)<.01 and math.abs(state.ball.x-tx)<.01,"rally marker agrees with actual first bounce")
+                    break
+                end
+            end
+            check(landed,"early rally bounce clears net and remains in opposing half")
+        end
+    end
+end
+local scoreOnly=new({gamesToWin=6})
+for i=1,4 do winPoint(scoreOnly,1) end
+check(scoreOnly.phase=="finished" and scoreOnly.winner==1,"legacy games-to-win option cannot extend victory")
+check(scoreOnly.games==nil and scoreOnly.options.gamesToWin==nil,"no aggregate games state")
+-- Extreme aim shots remain reachable after their legal first bounce; an
+-- eventual second bounce outside the court is a valid unreturned winner.
+for _,dimensions in ipairs({{8,18},{10,20},{14,30}}) do
+    local width,length=dimensions[1],dimensions[2]
+    for _,aim in ipairs({-1,0,1}) do
+        for _,speed in ipairs({5,9,14}) do
+            local state=PTCore.new({mode="tennis",x1=0,x2=width,y1=0,y2=length},{ballSpeed=speed})
+            state.phase,state.lastHit,state.clock="rally",2,1
+            state.ball={x=width*(aim<0 and .8 or .2),y=1,z=1.2,vx=0,vy=0,vz=0}
+            check(PTCore.swing(state,1,state.ball.x,state.ball.y,aim),"crosscourt extreme shot launches")
+            local reachable=0
+            for i=1,900 do
+                PTCore.step(state,1/120)
+                local b=state.ball
+                if not b then break end
+                if state.bounces==1 and b.z>=.15 and b.z<=2.4 and b.x>=-1.8 and b.x<=width+1.8
+                    and b.y>=length/2 and b.y<=length+1.8 then reachable=reachable+1/120 end
+            end
+            check(reachable>=.6,"extreme diagonal leaves at least .6 seconds inside court plus racket reach")
+        end
+    end
+    local feed=PTCore.new({mode="tennis",x1=0,x2=width,y1=0,y2=length})
+    PTCore.enableTestTarget(feed); PTCore.feedTestTarget(feed)
+    local receive=PTCore.receiveArea(feed,2)
+    local returned=false
+    for i=1,600 do
+        PTCore.step(feed,1/120)
+        local b=feed.ball
+        if not b then break end
+        if not feed.servicePending and b.z>=.15 and b.z<=2.4
+            and (receive.x-b.x)^2+(receive.y-b.y)^2<=feed.options.hitRadius^2 then
+            returned=PTCore.swing(feed,1,receive.x,receive.y,0);break
+        end
+    end
+    check(returned,"opposite serve can actually be returned at receiving marker including legacy maximum")
+end
+for _,height in ipairs({.15,.5,1.2,2.4}) do
+    for _,y in ipairs({.1,8,8.99}) do
+        local state=new()
+        state.phase,state.lastHit,state.clock="rally",2,1
+        state.ball={x=4,y=y,z=height,vx=0,vy=0,vz=0}
+        check(PTCore.swing(state,1,4,y,1),"near net and baseline contact accepted")
+        local b=state.ball
+        local apex=b.z+math.max(0,b.vz)^2/(2*9.8)
+        check(apex<=2.400001,"net clearance cannot override the trajectory height cap")
     end
 end

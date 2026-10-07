@@ -1,3 +1,4 @@
+require "PT_Core"
 PTCourtSelector = PTCourtSelector or {}
 local S = PTCourtSelector
 -- Remote clients cannot require server/BuildingObjects/ISBuildingObject.
@@ -24,7 +25,8 @@ function S.rectangle(x1, y1, x2, y2, z)
     local r = {x1=math.min(x1,x2), y1=math.min(y1,y2),
         x2=math.max(x1,x2)+1, y2=math.max(y1,y2)+1, z=z, mode="tennis"}
     local w, h = r.x2-r.x1, r.y2-r.y1
-    return r, w>=6 and w<=14 and h>=12 and h<=30
+    local limits=PTCore.courtLimits
+    return r, w>=limits.minWidth and w<=limits.maxWidth and h>=limits.minLength and h<=limits.maxLength
 end
 
 function S.isActive()
@@ -60,7 +62,10 @@ end
 
 function Cursor:validate(x,y,fresh)
     local r,valid=S.rectangle(self.startX or x,self.startY or y,x,y,self.z)
-    if not valid then return false,"Court size: 6-14 x 12-30" end
+    if not valid then
+        local limits=PTCore.courtLimits
+        return false,"Court size: "..limits.minWidth.."-"..limits.maxWidth.." x "..limits.minLength.."-"..limits.maxLength
+    end
     if not self.validator then return true end
     local t=getTimestampMs()
     if fresh or self.checkedX~=x or self.checkedY~=y or t>=(self.checkedUntil or 0) then

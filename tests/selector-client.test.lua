@@ -1,3 +1,5 @@
+local limits=PTCore.courtLimits
+local endX,endY=10+limits.minWidth-1,20+limits.minLength-1
 checks=0
 local function check(value,message) checks=checks+1; assert(value,message) end
 Events.OnGameStart.fire()
@@ -12,9 +14,9 @@ check(PTCourtSelector.blocksInput(),"real selector blocks gameplay")
 local sent=#ClientMock.sent
 ClientMock.buttons={[0]=true,[1]=true}
 Events.OnMouseDown.fire(10,20)
-Events.OnMouseDown.fire(15,31)
+Events.OnMouseDown.fire(endX,endY)
 check(#ClientMock.sent==sent,"selector clicks cannot start wall practice through client handler")
-check(result and result.x2==16 and result.y2==32,"real selection submits rectangle")
+check(result and result.x2==endX+1 and result.y2==endY+1,"real selection submits rectangle")
 ClientMock.time=ClientMock.time+251
 Events.OnTick.fire()
 check(not PTCourtSelector.blocksInput(),"input restored after confirmation")
