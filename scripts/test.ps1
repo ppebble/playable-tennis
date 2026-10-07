@@ -33,6 +33,10 @@ if ($LASTEXITCODE -ne 0) { throw 'Per-frame ball rendering tests failed' }
 if ($LASTEXITCODE -ne 0) { throw 'Cosmetic swing tests failed' }
 & $java -cp $cp LuaHarness (Join-Path $repo 'tests/selector-bootstrap.lua') (Join-Path $mod 'media/lua/client/PT_CourtSelector.lua') (Join-Path $repo 'tests/selector.test.lua')
 if ($LASTEXITCODE -ne 0) { throw 'Court rectangle selection tests failed' }
+& $java -cp $cp LuaHarness (Join-Path $repo 'tests/client-bootstrap.lua') (Join-Path $repo 'tests/selector-client-bootstrap.lua') $core $wall (Join-Path $mod 'media/lua/client/PT_CourtSelector.lua') (Join-Path $mod 'media/lua/client/PT_Client.lua') (Join-Path $repo 'tests/selector-client.test.lua')
+if ($LASTEXITCODE -ne 0) { throw 'Remote-client selector startup integration failed' }
+& $java -cp $cp LuaHarness (Join-Path $repo 'tests/selector-bootstrap.lua') (Join-Path $repo 'tests/selector-native-bootstrap.lua') (Join-Path $GamePath 'media/lua/shared/ISBaseObject.lua') (Join-Path $GamePath 'media/lua/server/BuildingObjects/ISBuildingObject.lua') (Join-Path $mod 'media/lua/client/PT_CourtSelector.lua') (Join-Path $repo 'tests/selector-native.test.lua')
+if ($LASTEXITCODE -ne 0) { throw 'Native singleplayer cursor dispatch failed' }
 & $java -cp $cp LuaHarness (Join-Path $repo 'tests/items-bootstrap.lua') (Join-Path $mod 'media/lua/shared/PT_ConvertRacket.lua') (Join-Path $mod 'media/lua/client/PT_RacketMenu.lua') (Join-Path $repo 'tests/items.test.lua')
 if ($LASTEXITCODE -ne 0) { throw 'Racket conversion tests failed' }
 $lua = @(Get-ChildItem (Join-Path $mod 'media/lua') -Recurse -Filter '*.lua' | ForEach-Object FullName)

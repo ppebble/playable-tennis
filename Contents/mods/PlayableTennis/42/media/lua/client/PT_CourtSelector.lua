@@ -1,8 +1,22 @@
-require "BuildingObjects/ISBuildingObject"
-
 PTCourtSelector = PTCourtSelector or {}
 local S = PTCourtSelector
-local Cursor = ISBuildingObject:derive("PT_CourtSelectionCursor")
+-- Remote clients cannot require server/BuildingObjects/ISBuildingObject.
+-- Own only the native drag callbacks needed for a non-building selection.
+local Cursor = {}
+function Cursor:rotateMouse() end
+function Cursor:rotateKey() end
+function Cursor:getSprite() return nil end
+function Cursor:reinit() self.build=false end
+function Cursor:getAPrompt() return nil end
+function Cursor:getBPrompt() return nil end
+function Cursor:getYPrompt() return nil end
+function Cursor:getLBPrompt() return nil end
+function Cursor:getRBPrompt() return nil end
+function Cursor:onJoypadPressButton() S.cancel() end
+function Cursor:onJoypadDirUp() end
+function Cursor:onJoypadDirDown() end
+function Cursor:onJoypadDirLeft() end
+function Cursor:onJoypadDirRight() end
 
 -- Use the ranch designation's native area highlight, with inclusive picked
 -- tiles converted to exclusive far edges only once at this boundary.
@@ -79,7 +93,10 @@ function S.begin(character, callback)
     if not character or character:isDead() or type(callback)~="function" then return false end
     S.cancel()
     local cursor = setmetatable({}, {__index=Cursor})
-    cursor:init()
+    -- IsoCell.setDrag looks this callback up with rawget, not inheritance.
+    cursor.deactivate = Cursor.deactivate
+    cursor.build,cursor.canBeBuild,cursor.isLeftDown = false,false,false
+    cursor.north,cursor.dragNilAfterPlace = false,false
     cursor.character,cursor.player = character,character:getPlayerNum()
     cursor.z = math.floor(character:getZ())
     cursor.callback = callback
@@ -99,6 +116,18 @@ local function update()
     cursor.rightWasDown = right
 end
 
+local function tileBuilding(cursor, isRender, x,y,z,square)
+    if cursor~=S.cursor then return end
+    -- Singleplayer loads the vanilla dispatcher; let it handle this cursor once.
+    if type(DoTileBuilding)=="function" then return end
+    if z~=cursor.z or not square then return end
+    if isRender then cursor:render(x,y,z,square) end
+    if cursor.character:isBuildButtonReleased() and cursor:isValid(square) then
+        cursor:tryBuild(x,y,z)
+    end
+end
+
+Events.OnDoTileBuilding2.Add(tileBuilding)
 Events.OnTick.Add(update)
 Events.OnKeyPressed.Add(function(key)
     if key==Keyboard.KEY_ESCAPE then S.cancel() end

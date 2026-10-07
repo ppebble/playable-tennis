@@ -61,3 +61,24 @@ S.begin(M.player,function()end)
 M.events.OnDisconnect()
 check(not S.isActive(),"disconnect cancels")
 check(not S.begin(nil,function()end),"invalid player rejected")
+-- Exercise the engine event, not just direct helper calls, on a remote client.
+function M.player:isBuildButtonReleased() return M.released end
+S.begin(M.player,function(r) result=r end)
+local active=S.cursor
+result=nil
+M.released=false
+M.events.OnDoTileBuilding2(active,true,10,20,0,square(10,20,0))
+check(not active.startX,"render does not select without a release")
+M.released=true
+M.events.OnDoTileBuilding2(active,false,10,20,0,square(10,20,0))
+check(active.startX==10,"native mouse event selects first corner")
+M.events.OnDoTileBuilding2(active,false,15,31,1,square(15,31,1))
+check(not result,"native event cannot select another floor")
+M.events.OnDoTileBuilding2(active,false,15,31,0,square(15,31,0))
+check(result and not S.isActive(),"native mouse event submits remote-client court")
+S.begin(M.player,function()error("duplicate dispatcher")end)
+DoTileBuilding=function()end
+M.events.OnDoTileBuilding2(S.cursor,false,10,20,0,square(10,20,0))
+check(not S.cursor.startX,"fallback defers to existing vanilla dispatcher")
+DoTileBuilding=nil
+S.cancel()
