@@ -4,3 +4,4 @@ author=ask13
 modversion=0.2.2
 versionMin=42.20
 description=Server-authoritative 1v1 tennis and free wall practice from all four directions. Convert rackets between weapon and sports variants using inventory right-click. Sports racket in primary hand and Tennis Ball in secondary hand required to serve/start. RMB+LMB to start/serve; cursor aim and LMB alone during rallies. Tennis activates only when both players join.
+poster=poster.png

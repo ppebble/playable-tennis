@@ -225,7 +225,7 @@ function S.dispatch(p,command,args)
     end
     if command=="sync" then
         list(p)
-        if s then refreshPause(s); publish(s) else emit(p,"left",{message="No active session. Join a nearby court."}) end
+        if s then refreshPause(s); publish(s) else emit(p,"left",{idleSync=true,message="No active session. Join a nearby court."}) end
         return
     end
     if command=="leave" then

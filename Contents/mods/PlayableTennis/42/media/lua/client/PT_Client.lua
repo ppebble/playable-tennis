@@ -118,11 +118,15 @@ function C.receive(command, args)
         notice(T.get("Court %1 registered. Right-click > Playable Tennis > Join.",args.id))
     elseif command == "left" then
         if args.session and C.session and args.session ~= C.session then return end
+        -- Login/respawn synchronization is also used by players who never play tennis.
+        -- Empty membership is normal; only warn if a local game was actually lost.
+        local idleSync=args.idleSync or args.message=="No active session. Join a nearby court."
+        local showNotice=not idleSync or C.session~=nil or C.joinPending
         if C.session then C.retired[C.session] = true end
         C.session, C.core, C.previousBall, C.ballSamples = nil, nil, nil, nil
         releaseGuard(false)
         C.joinPending = false
-        notice(args.message or "Left court.")
+        if showNotice then notice(args.message or "Left court.") end
     elseif command == "state" and args.core and args.session then
         if C.suspended then return end
         if C.retired[args.session] then return end

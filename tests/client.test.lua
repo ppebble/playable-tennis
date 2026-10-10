@@ -418,3 +418,24 @@ removeWall.callback()
 check(last().command=='leave','wall removal sends normal authorized leave command')
 PTClient.receive('left',{session='wall-remove',message='Wall practice area removed.'})
 check(not PTClient.core and not PTClient.session,'confirmed wall removal clears HUD and area overlay')
+
+-- Empty startup sync must not advertise tennis to unrelated players.
+ClientMock.player.noRacket=true
+PTClient.message=nil; PTClient.messageUntil=0
+local noSession='No active session. Join a nearby court.'
+PTClient.receive('left',{idleSync=true,message=noSession})
+check(PTClient.message==nil and PTClient.messageUntil==0,'unarmed idle sync is silent')
+PTClient.receive('left',{message=noSession})
+check(PTClient.message==nil,'legacy server idle sync is also silent')
+ClientMock.player.noRacket=false
+PTClient.receive('left',{idleSync=true,message=noSession})
+check(PTClient.message==nil,'racket alone does not turn automatic sync into a warning')
+PTClient.receive('error',{message='Obstacle blocks court'})
+local noticeExpiry=PTClient.messageUntil
+PTClient.receive('left',{idleSync=true,message=noSession})
+check(PTClient.message=='Obstacle blocks court' and PTClient.messageUntil==noticeExpiry,'idle sync preserves useful existing notice')
+PTClient.receive('state',snapshot(1,'ready',nil,'lost-session'))
+PTClient.receive('left',{idleSync=true,message=noSession})
+check(not PTClient.session and PTClient.message==noSession,'lost active session still clears state and informs player')
+PTClient.receive('left',{message='Wall practice area removed.'})
+check(PTClient.message=='Wall practice area removed.','explicit leave confirmation remains visible')

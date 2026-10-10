@@ -1,0 +1,92 @@
+Enjoy a little tennis in Project Zomboid!
+
+Play 1v1 tennis with a friend, or enjoy wall practice on your own.
+Earn a little Fitness and Nimble XP while keeping the rally going.
+
+[h2]Controls[/h2]
+To start playing or serve, [b]hold the right mouse button to aim, then left-click[/b].
+Once the rally begins, release the right mouse button. You can [b]return the ball with left-click while walking or running[/b].
+
+[b]Your mouse cursor controls where you aim your shot.[/b]
+
+[img]https://raw.githubusercontent.com/ppebble/playable-tennis/workshop-images/01-racket-conversion.jpg[/img]
+[h1]You MUST switch your Tennis Racket to sports use![/h1]
+[b]A regular Tennis Racket cannot be used to play.[/b]
+Right-click your Tennis Racket in your inventory and select [b]Switch racket to sports use[/b]. This converts it into a [b]Tennis Racket (Sports)[/b].
+
+[list]
+[*][b]Right hand / primary hand:[/b] Tennis Racket (Sports)
+[*][b]Left hand / secondary hand:[/b] Tennis Ball — required to start, serve, or restart wall practice
+[/list]
+
+You do not need to carry or hold a Tennis Ball to return a shot.
+
+If the conversion option is missing, move the racket from your bag into your main inventory and detach it from any attached hotbar slot first.
+A Tennis Racket (Sports) cannot be used for regular attacks.
+
+[h2]Space Requirements[/h2]
+[b]1v1 Tennis[/b]
+[list]
+[*]Minimum: 8 tiles wide × 18 tiles long
+[*]Maximum: 10 tiles wide × 20 tiles long
+[*]Courts can run north–south or east–west.
+[*]The court needs a floor and must be clear of blocking obstacles.
+[/list]
+Vanilla tennis nets are supported when correctly aligned along the middle of the court.
+
+[h2]Wall Practice for Solo Players[/h2]
+No court registration is required.
+You need a solid wall and a clear path for the ball. Doors, windows, and fences cannot be used as the practice wall.
+A wall just 1 tile wide is enough. To start, stand 1–14 tiles from the wall, measured straight out from its face.
+
+The practice area extends 14 tiles from the wall. The selected wall section is up to 5 tiles wide, and the playing area widens toward the back to a maximum of 9 tiles. The entire area does not have to be empty, but the ball needs a clear path.
+
+[list]
+[*]Equip a Tennis Racket (Sports) in your right hand and a Tennis Ball in your left hand.
+[*]Aim at the wall by holding the right mouse button, then left-click.
+[*]Use your cursor to aim and left-click to return the ball.
+[/list]
+
+The rally resets if the ball leaves the practice area, bounces twice, or hits an obstacle along its path.
+
+Moving too far away can end the practice session.
+To end it manually, [b]right-click → Playable Tennis → Remove wall practice area[/b].
+
+The top of the screen shows [b]Rally | Best | Depth[/b].
+Your best rally record is kept after you end the session.
+
+[img]https://raw.githubusercontent.com/ppebble/playable-tennis/workshop-images/02-court-menu.jpg[/img]
+
+[h2]1v1 Tennis with a Friend[/h2]
+[list]
+[img]https://raw.githubusercontent.com/ppebble/playable-tennis/workshop-images/03-court-selection.jpg[/img]
+[*]Select [b]right-click → Playable Tennis → Draw / replace my court (rectangle selection)[/b].
+[*]Click the first corner and the opposite corner to select the court, using a rectangle selection similar to vanilla farming areas.
+[*]Both players must right-click and choose the court's [b]Join[/b] option. It includes the court number, for example [b]Join 1 (tennis)[/b].
+[*]The server stands in the [b]Serve Zone[/b], and the receiver stands in the [b]Receive Zone[/b].
+[*]Both players need a Tennis Racket (Sports). Once they are in position, the server can begin.
+[/list]
+
+[b]The first player to join a new game serves first and keeps the serve for that entire game.[/b]
+The serving position alternates left and right after each point. Serve into the diagonally opposite service box. The receiver must let the serve bounce once before returning it.
+
+Only the current game's point score is displayed. Game and set win totals are not tracked.
+
+When the game ends, the winner's name is shown with [b]Win[/b].
+
+[img]https://raw.githubusercontent.com/ppebble/playable-tennis/workshop-images/04-scoreboard.jpg[/img]
+[h2]Courts and Saved Scores[/h2]
+Each account can own one court.
+You cannot create a court that overlaps another player's court.
+
+Putting down your racket, temporarily moving away, or disconnecting preserves the current score. The same participants can return and continue playing.
+The game ends when a participant selects [b]Leave court[/b], the court is deleted or replaced, or a winner is decided.
+
+[h2]Exercise Benefits[/h2]
+Active rallies grant small amounts of [b]Fitness[/b] and [b]Nimble[/b] XP.
+Waiting around or repeatedly swinging at nothing does not grant XP.
+
+The sandbox options [b]Fitness XP multiplier[/b] and [b]Nimble XP multiplier[/b] let you adjust each gain separately.
+The default is 1. Set either value to 0 to disable that XP gain.
+
+There is no added exercise fatigue or endurance drain. Normal endurance costs from running and other vanilla actions still apply.

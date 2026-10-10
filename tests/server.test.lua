@@ -524,5 +524,9 @@ for _,packet in ipairs(M.packets) do
     end
 end
 check(mine==true,"court list marks viewer-owned court for selection preview")
+M.reset()
+local idlePlayer=M.player("idle-player")
+command(idlePlayer,"sync",{})
+check(last().command=="left" and last().args.idleSync==true,"empty membership sync is marked as normal idle state")
 checks=(checks or 0)+count
 print("SERVER PASS: "..count.." behavioral checks")
